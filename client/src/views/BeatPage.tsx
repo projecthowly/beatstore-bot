@@ -120,7 +120,7 @@ export default function BeatPage() {
 }
 
 function labelOf(t: LicenseType) {
-  if (t === 'mp3') return 'P3';
+  if (t === 'mp3') return 'MP3';
   if (t === 'wav') return 'WAV';
   return 'Stems';
 }
