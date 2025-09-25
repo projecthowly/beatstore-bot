@@ -1,3 +1,4 @@
+import { Box, HStack, Image, Text, Button, VStack } from '@chakra-ui/react';
 import { useApp } from '../store';
 import type { Beat, LicenseType } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -5,9 +6,9 @@ import { useNavigate } from 'react-router-dom';
 export default function CatalogView() {
   const { beats } = useApp();
   return (
-    <div className="space-y-2">
+    <VStack spacing="10px" align="stretch">
       {beats.map(b => <BeatRow key={b.id} beat={b} />)}
-    </div>
+    </VStack>
   );
 }
 
@@ -15,7 +16,8 @@ function BeatRow({ beat }: { beat: Beat }) {
   const { addToCart, togglePlay, playingBeatId, isPlaying } = useApp();
   const nav = useNavigate();
 
-  const min = Math.min(...([beat.prices.mp3, beat.prices.wav, beat.prices.stems].filter(Boolean) as number[]));
+  const prices = [beat.prices.mp3, beat.prices.wav, beat.prices.stems].filter((x): x is number => Boolean(x));
+  const min = Math.min(...prices);
   const minLabel = Number.isFinite(min) ? `$${min}` : '—';
 
   const firstAvailable: LicenseType | undefined =
@@ -26,33 +28,31 @@ function BeatRow({ beat }: { beat: Beat }) {
   const playingThis = playingBeatId === beat.id && isPlaying;
 
   return (
-    <div
-      className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10 hover:border-white/20 transition cursor-pointer"
+    <HStack
+      spacing="12px"
+      p="12px"
+      border="1px solid rgba(255,255,255,.1)"
+      borderRadius="14px"
+      bg="rgba(255,255,255,.05)"
+      _hover={{ borderColor: 'rgba(255,255,255,.2)' }}
+      cursor="pointer"
       onClick={() => nav(`/beat/${beat.id}`)}
     >
-      <img src={beat.coverUrl} className="h-12 w-12 rounded-md object-cover" />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">{beat.title}</div>
-        <div className="text-xs text-white/60">Общественный • {beat.bpm} BPM</div>
-      </div>
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="px-2 py-1 rounded-md bg-white/10 text-xs"
-          onClick={() => togglePlay(beat.id)}
-          title={playingThis ? 'Пауза' : 'Играть демо'}
-        >
+      <Image src={beat.coverUrl} boxSize="48px" borderRadius="10px" objectFit="cover" alt="" />
+      <Box flex="1" minW="0">
+        <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>{beat.title}</Text>
+        <Text fontSize="xs" color="rgba(255,255,255,.6)">Общественный • {beat.bpm} BPM</Text>
+      </Box>
+      <HStack spacing="8px" onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" variant="outline" onClick={() => togglePlay(beat.id)}>
           {playingThis ? '⏸' : '▶'}
-        </button>
+        </Button>
         {firstAvailable && (
-          <button
-            className="px-2 py-1 rounded-md bg-primary text-primaryText text-xs"
-            onClick={() => addToCart(beat.id, firstAvailable)}
-            title="Добавить минимальную лицензию"
-          >
+          <Button size="sm" color="var(--tg-button-text-color,#fff)" onClick={() => addToCart(beat.id, firstAvailable)}>
             {minLabel}
-          </button>
+          </Button>
         )}
-      </div>
-    </div>
+      </HStack>
+    </HStack>
   );
 }

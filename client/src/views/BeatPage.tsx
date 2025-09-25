@@ -1,130 +1,66 @@
-import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Box, Button, HStack, Image, Stack, Text, VStack } from '@chakra-ui/react';
 import { useApp } from '../store';
-import type { Beat, LicenseType } from '../types';
 
 export default function BeatPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const nav = useNavigate();
-  const {
-    beats, addToCart, play, pause, playingBeatId, isPlaying
-  } = useApp();
-
-  const beat: Beat | undefined = useMemo(
-    () => beats.find(b => b.id === id),
-    [beats, id]
-  );
-
-  const licenses: LicenseType[] = useMemo(() => {
-    if (!beat) return [];
-    const res: LicenseType[] = [];
-    if (beat.prices.mp3) res.push('mp3');
-    if (beat.prices.wav) res.push('wav');
-    if (beat.prices.stems) res.push('stems');
-    return res;
-  }, [beat]);
-
-  const [license, setLicense] = useState<LicenseType | undefined>(() => licenses[0]);
+  const { beats, addToCart, togglePlay, playingBeatId, isPlaying } = useApp();
+  const beat = beats.find(b => b.id === id);
 
   if (!beat) {
-    return (
-      <div className="p-2">
-        <button className="text-sm underline" onClick={() => nav(-1)}>← Назад</button>
-        <div className="mt-4 text-white/70">Бит не найден</div>
-      </div>
-    );
+    return <Text>Бит не найден.</Text>
   }
 
   const playingThis = playingBeatId === beat.id && isPlaying;
-  const canDemo = Boolean(beat.files.mp3);
-
-  const onAdd = () => {
-    if (!license) return;
-    addToCart(beat.id, license);
-    alert('Добавлено в корзину');
-  };
-
-  const onPlayPause = () => {
-    if (!canDemo) return;
-    if (playingThis) pause(); else play(beat.id);
-  };
-
-  const onDownloadDemo = () => {
-    if (!beat.files.mp3) return;
-    window.open(beat.files.mp3, '_blank');
-  };
 
   return (
-    <div className="pb-8">
-      <button className="text-sm underline" onClick={() => nav(-1)}>← Назад</button>
+    <VStack align="stretch" spacing="16px">
+      <Button variant="ghost" onClick={() => nav(-1)}>← Назад</Button>
 
-      <div className="mt-4 bg-white/5 rounded-2xl border border-white/10 p-4">
-        <div className="flex items-start gap-4">
-          <img src={beat.coverUrl} className="h-28 w-28 rounded-xl object-cover" />
-          <div className="flex-1 min-w-0">
-            <div className="text-lg font-semibold truncate">{beat.title}</div>
-            <div className="text-sm text-white/70 mt-0.5">Key: {beat.key} • {beat.bpm} BPM</div>
+      <HStack align="start" spacing="16px">
+        <Image src={beat.coverUrl} boxSize="96px" borderRadius="14px" objectFit="cover" alt="" />
+        <Box flex="1" minW="0">
+          <Text fontSize="lg" fontWeight="semibold" noOfLines={2}>{beat.title}</Text>
+          <Text fontSize="sm" color="rgba(255,255,255,.7)">Тональность: {beat.key} • {beat.bpm} BPM</Text>
+          <HStack mt={3}>
+            <Button size="sm" variant="outline" onClick={() => togglePlay(beat.id)}>
+              {playingThis ? '⏸ Пауза' : '▶ Прослушать'}
+            </Button>
+          </HStack>
+        </Box>
+      </HStack>
 
-            {licenses.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {licenses.map((t) => (
-                  <button
-                    key={t}
-                    className={`px-3 py-1.5 rounded-lg border text-sm ${
-                      license === t ? 'bg-primary text-primaryText border-transparent'
-                                    : 'bg-white/10 border-white/15 text-white/90'
-                    }`}
-                    onClick={() => setLicense(t)}
-                  >
-                    {labelOf(t)}{priceOf(beat, t)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      <Stack spacing="10px">
+        {beat.prices.mp3 && (
+          <LicenseRow name="MP3" price={beat.prices.mp3} onAdd={() => addToCart(beat.id, 'mp3')} />
+        )}
+        {beat.prices.wav && (
+          <LicenseRow name="WAV" price={beat.prices.wav} onAdd={() => addToCart(beat.id, 'wav')} />
+        )}
+        {beat.prices.stems && (
+          <LicenseRow name="STEMS" price={beat.prices.stems} onAdd={() => addToCart(beat.id, 'stems')} />
+        )}
+      </Stack>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm"
-            disabled={!canDemo}
-            onClick={onPlayPause}
-            title={canDemo ? '' : 'Нет демо-файла'}
-          >
-            {playingThis ? '⏸ Пауза' : '▶ Проиграть демо'}
-          </button>
-
-          <button
-            className="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm"
-            disabled={!canDemo}
-            onClick={onDownloadDemo}
-          >
-            ⬇️ Скачать демо
-          </button>
-
-          <button
-            className="ml-auto px-4 py-2 rounded-lg bg-primary text-primaryText text-sm"
-            disabled={!license}
-            onClick={onAdd}
-          >
-            В корзину {license ? `(${labelOf(license)})` : ''}
-          </button>
-        </div>
-
-        <div className="mt-3 text-xs text-white/50">
-          * Полные файлы выдаются после оплаты. Демо = весь бит с тэгом/превью.
-        </div>
-      </div>
-    </div>
+      <Box fontSize="xs" color="rgba(255,255,255,.6)">
+        * Полные файлы выдаются после оплаты. В демо может быть тэг/превью.
+      </Box>
+    </VStack>
   );
 }
 
-function labelOf(t: LicenseType) {
-  if (t === 'mp3') return 'MP3';
-  if (t === 'wav') return 'WAV';
-  return 'Stems';
-}
-function priceOf(beat: Beat, t: LicenseType) {
-  const p = (beat.prices as any)[t] as number | undefined;
-  return typeof p === 'number' ? ` — $${p}` : '';
+function LicenseRow({ name, price, onAdd }:{ name: string; price: number; onAdd: () => void }) {
+  return (
+    <HStack
+      p="12px"
+      border="1px solid rgba(255,255,255,.1)"
+      borderRadius="12px"
+      bg="rgba(255,255,255,.05)"
+      justify="space-between"
+    >
+      <Text>{name} — ${price}</Text>
+      <Button size="sm" color="var(--tg-button-text-color,#fff)" onClick={onAdd}>В корзину</Button>
+    </HStack>
+  );
 }

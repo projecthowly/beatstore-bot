@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Box, Container, HStack, Text, Button } from '@chakra-ui/react';
 import { useApp } from '../store';
 
 export default function Player() {
@@ -17,17 +18,19 @@ export default function Player() {
   if (!beat) return null;
 
   return (
-    <div className="fixed bottom-[56px] inset-x-0 bg-black/60 backdrop-blur border-t border-white/10">
-      <div className="max-w-screen-sm mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="text-sm opacity-90 truncate">{beat.title}</div>
-        <div className="flex gap-2">
-          <button className="text-sm text-white/80 underline" onClick={() => togglePlay(beat.id)}>
-            {isPlaying ? 'Пауза' : 'Играть'}
-          </button>
-          <button className="text-sm text-white/60" onClick={pause}>Стоп</button>
-        </div>
-      </div>
+    <Box position="fixed" bottom="56px" left="0" right="0" borderTop="1px solid rgba(255,255,255,.1)" bg="rgba(0,0,0,.35)" backdropFilter="blur(8px)">
+      <Container maxW="container.sm">
+        <HStack justify="space-between" py={3}>
+          <Text fontSize="sm" noOfLines={1}>{beat.title}</Text>
+          <HStack>
+            <Button variant="link" color="white" onClick={() => togglePlay(beat.id)}>
+              {isPlaying ? 'Пауза' : 'Играть'}
+            </Button>
+            <Button variant="link" color="rgba(255,255,255,.7)" onClick={pause}>Стоп</Button>
+          </HStack>
+        </HStack>
+      </Container>
       <audio ref={audioRef} src={previewUrl} preload="none" />
-    </div>
+    </Box>
   );
 }
