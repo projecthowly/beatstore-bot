@@ -17,8 +17,8 @@ export default function Player() {
   if (!beat) return null;
 
   return (
-    <div className="fixed bottom-12 inset-x-0 bg-black/60 backdrop-blur border-t border-white/10 px-4 py-3">
-      <div className="flex items-center justify-between">
+    <div className="fixed bottom-[56px] inset-x-0 bg-black/60 backdrop-blur border-t border-white/10">
+      <div className="max-w-screen-sm mx-auto px-4 py-3 flex items-center justify-between">
         <div className="text-sm opacity-90 truncate">{beat.title}</div>
         <div className="flex gap-2">
           <button className="text-sm text-white/80 underline" onClick={() => togglePlay(beat.id)}>

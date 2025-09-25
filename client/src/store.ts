@@ -2,21 +2,15 @@ import { create } from 'zustand';
 import type { Beat, LicenseType, Seller, Session, Plan } from './types';
 
 type CartItem = { beatId: string; license: LicenseType; price: number };
-type Tab = 'catalog' | 'analytics' | 'account';
-
 type AppState = {
   session: Session;
   seller: Seller;
   beats: Beat[];
   cart: CartItem[];
-  tab: Tab;
 
   playingBeatId?: string;
   isPlaying: boolean;
 
-  selectedBeatId?: string;
-
-  setTab: (t: Tab) => void;
   initFromTelegram: () => void;
 
   setSellerName: (name: string) => void;
@@ -26,9 +20,6 @@ type AppState = {
   addToCart: (beatId: string, license: LicenseType) => void;
   removeFromCart: (beatId: string, license: LicenseType) => void;
   clearCart: () => void;
-
-  openDetail: (beatId: string) => void;
-  closeDetail: () => void;
 
   play: (beatId: string) => void;
   pause: () => void;
@@ -42,7 +33,6 @@ const defaultSeller: Seller = {
   plan: 'free'
 };
 
-// демо mp3
 const DEMO_MP3 = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
 const mockBeats: Beat[] = [
@@ -80,14 +70,9 @@ export const useApp = create<AppState>((set, get) => ({
   seller: defaultSeller,
   beats: mockBeats,
   cart: [],
-  tab: 'catalog',
 
   playingBeatId: undefined,
   isPlaying: false,
-
-  selectedBeatId: undefined,
-
-  setTab: (t) => set({ tab: t }),
 
   initFromTelegram: () => {
     const tg: any = (window as any).Telegram?.WebApp;
@@ -108,8 +93,8 @@ export const useApp = create<AppState>((set, get) => ({
         '--tg-button-text-color': themeParams.button_text_color
       };
       Object.entries(map).forEach(([k, v]) => v && root.style.setProperty(k, v));
-      if (!themeParams.bg_color) {
-        if (colorScheme === 'dark') root.style.setProperty('--tg-bg-color', '#0f1115');
+      if (!themeParams.bg_color && colorScheme === 'dark') {
+        root.style.setProperty('--tg-bg-color', '#0f1115');
       }
 
       if (sp) {
@@ -126,10 +111,7 @@ export const useApp = create<AppState>((set, get) => ({
       } else {
         const stored = localStorage.getItem('my-seller');
         const my = stored ? (JSON.parse(stored) as Seller) : defaultSeller;
-        set({
-          session: { role: 'maker', tgUser: user },
-          seller: my
-        });
+        set({ session: { role: 'maker', tgUser: user }, seller: my });
       }
     } else {
       const stored = localStorage.getItem('my-seller');
@@ -159,25 +141,18 @@ export const useApp = create<AppState>((set, get) => ({
     if (!beat) return;
     const price = (beat.prices as any)[license] as number | undefined;
     if (!price) return;
-    const item: CartItem = { beatId, license, price };
-    set({ cart: [...get().cart, item] });
+    set({ cart: [...get().cart, { beatId, license, price }] });
   },
   removeFromCart: (beatId, license) => {
     set({ cart: get().cart.filter(i => !(i.beatId === beatId && i.license === license)) });
   },
   clearCart: () => set({ cart: [] }),
 
-  openDetail: (beatId) => set({ selectedBeatId: beatId }),
-  closeDetail: () => set({ selectedBeatId: undefined }),
-
   play: (beatId) => set({ playingBeatId: beatId, isPlaying: true }),
   pause: () => set({ isPlaying: false }),
   togglePlay: (beatId) => {
     const { playingBeatId, isPlaying } = get();
-    if (playingBeatId === beatId) {
-      set({ isPlaying: !isPlaying });
-    } else {
-      set({ playingBeatId: beatId, isPlaying: true });
-    }
-  }
+    if (playingBeatId === beatId) set({ isPlaying: !isPlaying });
+    else set({ playingBeatId: beatId, isPlaying: true });
+  },
 }));
