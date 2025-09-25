@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tg-bg-color: #0f1115;
+  --tg-text-color: #e5e7eb;
+  --tg-button-color: #2563eb;
+  --tg-button-text-color: #ffffff;
+}
+
+html, body, #root {
+  height: 100%;
+}
