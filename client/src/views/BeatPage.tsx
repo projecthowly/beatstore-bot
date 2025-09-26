@@ -1,66 +1,112 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Button, HStack, Image, Stack, Text, VStack } from '@chakra-ui/react';
-import { useApp } from '../store';
+// client/src/views/BeatPage.tsx
+import { useParams, useNavigate } from "react-router-dom";
+import { Card, Button, Group, Image, Stack, Text, Box } from "@mantine/core";
+import { useApp } from "../store";
 
 export default function BeatPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { beats, addToCart, togglePlay, playingBeatId, isPlaying } = useApp();
-  const beat = beats.find(b => b.id === id);
+  const beat = beats.find((b) => b.id === id);
 
   if (!beat) {
-    return <Text>Бит не найден.</Text>
+    return <Text>Бит не найден.</Text>;
   }
 
   const playingThis = playingBeatId === beat.id && isPlaying;
 
   return (
-    <VStack align="stretch" spacing="16px">
-      <Button variant="ghost" onClick={() => nav(-1)}>← Назад</Button>
+    <Stack gap="md">
+      <Button variant="subtle" onClick={() => nav(-1)}>
+        ← Назад
+      </Button>
 
-      <HStack align="start" spacing="16px">
-        <Image src={beat.coverUrl} boxSize="96px" borderRadius="14px" objectFit="cover" alt="" />
-        <Box flex="1" minW="0">
-          <Text fontSize="lg" fontWeight="semibold" noOfLines={2}>{beat.title}</Text>
-          <Text fontSize="sm" color="rgba(255,255,255,.7)">Тональность: {beat.key} • {beat.bpm} BPM</Text>
-          <HStack mt={3}>
-            <Button size="sm" variant="outline" onClick={() => togglePlay(beat.id)}>
-              {playingThis ? '⏸ Пауза' : '▶ Прослушать'}
+      <Group align="flex-start" gap="md" wrap="nowrap">
+        <Image
+          src={beat.coverUrl}
+          width={96}
+          height={96}
+          radius="md"
+          fit="cover"
+          alt=""
+        />
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Text size="lg" fw={600} lineClamp={2}>
+            {beat.title}
+          </Text>
+          <Text size="sm" c="dimmed">
+            Тональность: {beat.key} • {beat.bpm} BPM
+          </Text>
+          <Group mt="sm">
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => togglePlay(beat.id)}
+            >
+              {playingThis ? "⏸ Пауза" : "▶ Прослушать"}
             </Button>
-          </HStack>
+          </Group>
         </Box>
-      </HStack>
+      </Group>
 
-      <Stack spacing="10px">
+      <Stack gap="sm">
         {beat.prices.mp3 && (
-          <LicenseRow name="MP3" price={beat.prices.mp3} onAdd={() => addToCart(beat.id, 'mp3')} />
+          <LicenseRow
+            name="MP3"
+            price={beat.prices.mp3}
+            onAdd={() => addToCart(beat.id, "mp3")}
+          />
         )}
         {beat.prices.wav && (
-          <LicenseRow name="WAV" price={beat.prices.wav} onAdd={() => addToCart(beat.id, 'wav')} />
+          <LicenseRow
+            name="WAV"
+            price={beat.prices.wav}
+            onAdd={() => addToCart(beat.id, "wav")}
+          />
         )}
         {beat.prices.stems && (
-          <LicenseRow name="STEMS" price={beat.prices.stems} onAdd={() => addToCart(beat.id, 'stems')} />
+          <LicenseRow
+            name="STEMS"
+            price={beat.prices.stems}
+            onAdd={() => addToCart(beat.id, "stems")}
+          />
         )}
       </Stack>
 
-      <Box fontSize="xs" color="rgba(255,255,255,.6)">
+      <Text size="xs" c="dimmed">
         * Полные файлы выдаются после оплаты. В демо может быть тэг/превью.
-      </Box>
-    </VStack>
+      </Text>
+    </Stack>
   );
 }
 
-function LicenseRow({ name, price, onAdd }:{ name: string; price: number; onAdd: () => void }) {
+function LicenseRow({
+  name,
+  price,
+  onAdd,
+}: {
+  name: string;
+  price: number;
+  onAdd: () => void;
+}) {
   return (
-    <HStack
-      p="12px"
-      border="1px solid rgba(255,255,255,.1)"
-      borderRadius="12px"
-      bg="rgba(255,255,255,.05)"
-      justify="space-between"
+    <Card
+      shadow="xs"
+      padding="sm"
+      radius="md"
+      withBorder
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
     >
-      <Text>{name} — ${price}</Text>
-      <Button size="sm" color="var(--tg-button-text-color,#fff)" onClick={onAdd}>В корзину</Button>
-    </HStack>
+      <Text>
+        {name} — ${price}
+      </Text>
+      <Button size="xs" onClick={onAdd}>
+        В корзину
+      </Button>
+    </Card>
   );
 }

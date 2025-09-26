@@ -1,24 +1,31 @@
-import { useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { Box, Container } from '@chakra-ui/react';
-import TopBar from './components/TopBar';
-import BottomTabs from './components/BottomTabs';
-import Player from './components/Player';
-import CatalogView from './views/CatalogView';
-import AnalyticsView from './views/AnalyticsView';
-import AccountView from './views/AccountView';
-import BeatPage from './views/BeatPage';
-import CartPage from './views/CartPage';
-import { useApp } from './store';
+// client/src/App.tsx
+import { useEffect } from "react";
+import { Routes, Route } from "react-router-dom";
+import { Container } from "@mantine/core";
+
+import TopBar from "./components/TopBar";
+import BottomTabs from "./components/BottomTabs";
+import Player from "./components/Player";
+
+import CatalogView from "./views/CatalogView";
+import AnalyticsView from "./views/AnalyticsView";
+import AccountView from "./views/AccountView";
+import BeatPage from "./views/BeatPage";
+import CartPage from "./views/CartPage";
+
+import { useApp } from "./store";
 
 export default function App() {
   const { initFromTelegram } = useApp();
-  useEffect(() => { initFromTelegram(); }, [initFromTelegram]);
+
+  useEffect(() => {
+    initFromTelegram();
+  }, [initFromTelegram]);
 
   return (
-    <Box minH="100%" display="flex" flexDir="column">
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <TopBar />
-      <Container maxW="container.sm" flex="1" pt={2} pb="116px">
+      <Container size="xs" style={{ flex: 1, paddingTop: 8, paddingBottom: 116 }}>
         <Routes>
           <Route path="/" element={<CatalogView />} />
           <Route path="/beat/:id" element={<BeatPage />} />
@@ -29,6 +36,6 @@ export default function App() {
       </Container>
       <Player />
       <BottomTabs />
-    </Box>
+    </div>
   );
 }

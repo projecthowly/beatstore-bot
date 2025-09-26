@@ -1,8 +1,13 @@
 import 'dotenv/config';
-import path from 'path';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import type { Telegraf } from 'telegraf';
-import { createBot, setMenuButton } from './bot';
+import { createBot, setMenuButton } from './bot.js';
+
+// --- эмуляция __dirname в ESM ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const BOT_TOKEN = process.env.BOT_TOKEN!;
 const WEBAPP_URL = process.env.WEBAPP_URL || ''; // БАЗОВАЯ ссылка без ?v=
