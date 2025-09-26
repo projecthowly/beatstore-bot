@@ -1,6 +1,6 @@
-// client/src/components/Player.tsx
 import { useEffect, useRef } from "react";
-import { Paper, Container, Group, Text, Button } from "@mantine/core";
+import { Paper, Container, Group, Text, ActionIcon } from "@mantine/core";
+import { IconPlayerPlay, IconPlayerPause, IconPlayerStop } from "@tabler/icons-react";
 import { useApp } from "../store";
 
 export default function Player() {
@@ -25,12 +25,13 @@ export default function Player() {
       p="md"
       style={{
         position: "fixed",
-        bottom: 56, // над нижними вкладками
+        bottom: "calc(var(--player-gap) + env(safe-area-inset-bottom, 0px))",
         left: 0,
         right: 0,
-        borderTop: "1px solid rgba(255,255,255,.1)",
+        borderTop: "1px solid rgba(255,255,255,.12)",
         background: "rgba(0,0,0,.35)",
         backdropFilter: "blur(8px)",
+        zIndex: 30,
       }}
     >
       <Container size="xs">
@@ -39,12 +40,17 @@ export default function Player() {
             {beat.title}
           </Text>
           <Group gap="xs">
-            <Button variant="subtle" onClick={() => togglePlay(beat.id)}>
-              {isPlaying ? "Пауза" : "Играть"}
-            </Button>
-            <Button variant="subtle" c="dimmed" onClick={pause}>
-              Стоп
-            </Button>
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              onClick={() => togglePlay(beat.id)}
+              title={isPlaying ? "Пауза" : "Играть"}
+            >
+              {isPlaying ? <IconPlayerPause /> : <IconPlayerPlay />}
+            </ActionIcon>
+            <ActionIcon variant="subtle" size="lg" onClick={pause} title="Стоп">
+              <IconPlayerStop />
+            </ActionIcon>
           </Group>
         </Group>
       </Container>

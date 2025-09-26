@@ -1,4 +1,3 @@
-// client/src/App.tsx
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { Container } from "@mantine/core";
@@ -23,9 +22,24 @@ export default function App() {
   }, [initFromTelegram]);
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <TopBar />
-      <Container size="xs" style={{ flex: 1, paddingTop: 8, paddingBottom: 116 }}>
+      <Container
+        size="xs"
+        style={{
+          flex: 1,
+          paddingTop: 8,
+          // запас снизу под плеер и нижние табы + safe-area (iOS)
+          paddingBottom:
+            "calc(var(--player-gap) + var(--bottombar-h) + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
         <Routes>
           <Route path="/" element={<CatalogView />} />
           <Route path="/beat/:id" element={<BeatPage />} />
