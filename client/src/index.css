@@ -1,9 +1,44 @@
-:root {
-  --tg-bg-color: #0f1115;
-  --tg-text-color: #e5e7eb;
-  --tg-button-color: #2563eb;
-  --tg-button-text-color: #ffffff;
+:root{
+  --bg-deep: #07080C;      /* почти чёрный */
+  --text: #E7E8EF;         /* светлый текст */
+  --muted: #9AA0B3;        /* вторичный */
+  --accent-1: #6E6BFF;     /* фиолетово-синий */
+  --accent-2: #2EA1FF;     /* циан */
+  --surface-border: rgba(255,255,255,0.12);
+
+  --topbar-h: 56px;
+  --bottombar-h: 64px;
+  --player-gap: 56px;
 }
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+html,body,#root{height:100%}
+html,body{margin:0;padding:0;color:var(--text);background:var(--bg-deep)}
+*{box-sizing:border-box}
+
+/* Фон: тёмный градиент + мягкий свет, лёгкая сетка */
+body::before{
+  content:"";
+  position:fixed; inset:0; z-index:-2;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(110,107,255,0.25), transparent 60%),
+    radial-gradient(900px 500px at 80% 10%, rgba(46,161,255,0.18), transparent 60%),
+    linear-gradient(180deg, #05060A 0%, #0B0E16 100%);
+  pointer-events:none;
+}
+body::after{
+  content:"";
+  position:fixed; inset:0; z-index:-3;
+  background-image:
+    linear-gradient(transparent 95%, rgba(255,255,255,0.04) 96%),
+    linear-gradient(90deg, transparent 95%, rgba(255,255,255,0.04) 96%);
+  background-size: 32px 32px;
+  opacity:.35;
+  pointer-events:none;
+}
+
+/* скролл аккуратный */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:8px}
+
+/* ссылки/базовые акценты */
+a{color:#9dc9ff}

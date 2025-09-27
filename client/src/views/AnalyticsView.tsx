@@ -7,15 +7,14 @@ export default function AnalyticsView() {
 
   return (
     <Stack gap="12px">
-      <Text fw={600}>Аналитика</Text>
-
-      <Paper withBorder p="12px" radius="md" style={{ background: "rgba(255,255,255,.05)" }}>
+      <Text fw={600} style={{ color: 'var(--text)' }}>Аналитика</Text>
+      <Paper withBorder p="12px" radius="md" style={{ background: "var(--surface)", borderColor: "var(--muted)" }}>
         {isFree ? (
-          <Text size="sm" c="dimmed">
+          <Text size="sm" style={{ color: 'var(--muted)' }}>
             Доступно на плане <b>Basic</b> и выше. Здесь будут графики прослушиваний и скачиваний.
           </Text>
         ) : (
-          <Text size="sm" c="dimmed">Здесь появятся графики и метрики.</Text>
+          <Text size="sm" style={{ color: 'var(--muted)' }}>Здесь появятся графики и метрики.</Text>
         )}
       </Paper>
     </Stack>

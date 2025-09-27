@@ -1,6 +1,5 @@
-// client/src/views/BeatPage.tsx
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, Button, Group, Image, Stack, Text, Box } from "@mantine/core";
+import { Card, Group, Image, Text, Button, Stack } from "@mantine/core";
 import { useApp } from "../store";
 
 export default function BeatPage() {
@@ -10,46 +9,48 @@ export default function BeatPage() {
   const beat = beats.find((b) => b.id === id);
 
   if (!beat) {
-    return <Text>Бит не найден.</Text>;
+    return <Text style={{ color: "var(--text)" }}>Бит не найден.</Text>;
   }
 
   const playingThis = playingBeatId === beat.id && isPlaying;
 
   return (
     <Stack gap="md">
-      <Button variant="subtle" onClick={() => nav(-1)}>
+      <Button variant="subtle" onClick={() => nav(-1)} c="var(--muted)">
         ← Назад
       </Button>
 
-      <Group align="flex-start" gap="md" wrap="nowrap">
-        <Image
-          src={beat.coverUrl}
-          width={96}
-          height={96}
-          radius="md"
-          fit="cover"
-          alt=""
-        />
-        <Box style={{ flex: 1, minWidth: 0 }}>
-          <Text size="lg" fw={600} lineClamp={2}>
-            {beat.title}
-          </Text>
-          <Text size="sm" c="dimmed">
-            Тональность: {beat.key} • {beat.bpm} BPM
-          </Text>
-          <Group mt="sm">
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => togglePlay(beat.id)}
-            >
-              {playingThis ? "⏸ Пауза" : "▶ Прослушать"}
-            </Button>
-          </Group>
-        </Box>
-      </Group>
+      <Card
+        withBorder
+        p="md"
+        radius="md"
+        style={{ background: "var(--surface)", borderColor: "var(--muted)" }}
+      >
+        <Group align="flex-start" gap="md" wrap="nowrap">
+          <Image src={beat.coverUrl} w={96} h={96} radius="md" fit="cover" alt="" />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <Text size="lg" fw={600} style={{ color: "var(--text)" }} lineClamp={2}>
+              {beat.title}
+            </Text>
+            <Text size="sm" style={{ color: "var(--muted)" }}>
+              Тональность: {beat.key} • {beat.bpm} BPM
+            </Text>
 
-      <Stack gap="sm">
+            <Group gap="sm" mt="sm">
+              <Button
+                variant="outline"
+                c="var(--text)"
+                style={{ borderColor: "var(--muted)" }}
+                onClick={() => togglePlay(beat.id)}
+              >
+                {playingThis ? "⏸ Пауза" : "▶ Прослушать"}
+              </Button>
+            </Group>
+          </div>
+        </Group>
+      </Card>
+
+      <Stack gap="10px">
         {beat.prices.mp3 && (
           <LicenseRow
             name="MP3"
@@ -73,7 +74,7 @@ export default function BeatPage() {
         )}
       </Stack>
 
-      <Text size="xs" c="dimmed">
+      <Text size="xs" style={{ color: "var(--muted)" }}>
         * Полные файлы выдаются после оплаты. В демо может быть тэг/превью.
       </Text>
     </Stack>
@@ -91,22 +92,19 @@ function LicenseRow({
 }) {
   return (
     <Card
-      shadow="xs"
-      padding="sm"
-      radius="md"
       withBorder
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
+      p="12px"
+      radius="md"
+      style={{ background: "var(--surface)", borderColor: "var(--muted)" }}
     >
-      <Text>
-        {name} — ${price}
-      </Text>
-      <Button size="xs" onClick={onAdd}>
-        В корзину
-      </Button>
+      <Group justify="space-between">
+        <Text style={{ color: "var(--text)" }}>
+          {name} — ${price}
+        </Text>
+        <Button color="brand" c="var(--text)" onClick={onAdd}>
+          В корзину
+        </Button>
+      </Group>
     </Card>
   );
 }

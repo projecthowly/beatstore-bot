@@ -13,44 +13,31 @@ export default function CartPage() {
 
   return (
     <Stack gap="12px">
-      <Text fw={600}>Корзина</Text>
+      <Text fw={600} style={{ color: 'var(--text)' }}>Корзина</Text>
 
       {items.length === 0 && (
-        <Paper
-          withBorder
-          p="24px"
-          radius="md"
-          style={{
-            borderStyle: "dashed",
-            background: "rgba(255,255,255,.03)",
-          }}
-        >
+        <Paper withBorder p="24px" radius="md"
+          style={{ borderStyle: "dashed", background: "var(--surface)", borderColor: "var(--muted)" }}>
           <Center style={{ flexDirection: "column", gap: 8 }}>
-            <IconShoppingCart size={36} />
-            <Text c="dimmed" size="sm">Ваша корзина пуста</Text>
-            <Text c="dimmed" size="xs">Добавьте биты из каталога</Text>
+            <IconShoppingCart size={36} color="var(--muted)" />
+            <Text style={{ color: 'var(--muted)' }} size="sm">Ваша корзина пуста</Text>
+            <Text style={{ color: 'var(--muted)' }} size="xs">Добавьте биты из каталога</Text>
           </Center>
         </Paper>
       )}
 
       {items.map((it, idx) => (
-        <Paper
-          key={idx}
-          withBorder
-          p="12px"
-          radius="md"
-          style={{ background: "rgba(255,255,255,.05)" }}
-        >
+        <Paper key={idx} withBorder p="12px" radius="md"
+          style={{ background: "var(--surface)", borderColor: "var(--muted)" }}>
           <Group justify="space-between">
             <Box>
-              <Text size="sm" fw={600}>{it.beat.title}</Text>
-              <Text size="xs" c="dimmed">{it.license.toUpperCase()} — ${it.price}</Text>
+              <Text size="sm" fw={600} style={{ color: 'var(--text)' }}>{it.beat.title}</Text>
+              <Text size="xs" style={{ color: 'var(--muted)' }}>
+                {it.license.toUpperCase()} — ${it.price}
+              </Text>
             </Box>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => removeFromCart(it.beatId, it.license)}
-            >
+            <Button size="xs" variant="outline" c="var(--text)" style={{ borderColor: 'var(--muted)' }}
+              onClick={() => removeFromCart(it.beatId, it.license)}>
               Удалить
             </Button>
           </Group>
@@ -60,12 +47,14 @@ export default function CartPage() {
       {items.length > 0 && (
         <Stack gap="10px" mt="sm">
           <Group justify="space-between">
-            <Text>Итого:</Text>
-            <Text fw={600}>${total}</Text>
+            <Text style={{ color: 'var(--text)' }}>Итого:</Text>
+            <Text fw={600} style={{ color: 'var(--text)' }}>${total}</Text>
           </Group>
           <Group>
-            <Button variant="outline" onClick={clearCart}>Очистить</Button>
-            <Button fullWidth color="blue">Оплатить</Button>
+            <Button variant="outline" c="var(--text)" style={{ borderColor: 'var(--muted)' }} onClick={clearCart}>
+              Очистить
+            </Button>
+            <Button fullWidth color="brand" c="var(--text)">Оплатить</Button>
           </Group>
         </Stack>
       )}

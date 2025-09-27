@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
-import { Container } from "@mantine/core";
+import { Container, Stack } from "@mantine/core";
 
 import TopBar from "./components/TopBar";
 import BottomTabs from "./components/BottomTabs";
@@ -9,47 +9,43 @@ import Player from "./components/Player";
 import CatalogView from "./views/CatalogView";
 import AnalyticsView from "./views/AnalyticsView";
 import AccountView from "./views/AccountView";
-import BeatPage from "./views/BeatPage";
 import CartPage from "./views/CartPage";
-
-import { useApp } from "./store";
+import BeatPage from "./views/BeatPage";
 
 export default function App() {
-  const { initFromTelegram } = useApp();
-
+  // если откроют вне Telegram — включим «тёмную» тему сайта по нашим цветам
   useEffect(() => {
-    initFromTelegram();
-  }, [initFromTelegram]);
+    document.body.style.background = "var(--bg)";
+    document.body.style.color = "var(--text)";
+  }, []);
 
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <>
       <TopBar />
+
+      {/* Контентная зона: отступ сверху под шапку и снизу под таббар/плеер */}
       <Container
         size="xs"
+        px="sm"
         style={{
-          flex: 1,
-          paddingTop: 8,
-          // запас снизу под плеер и нижние табы + safe-area (iOS)
-          paddingBottom:
-            "calc(var(--player-gap) + var(--bottombar-h) + env(safe-area-inset-bottom, 0px))",
+          paddingTop: "12px",
+          paddingBottom: "calc(var(--bottombar-h) + var(--player-gap))",
+          minHeight: "100dvh",
         }}
       >
-        <Routes>
-          <Route path="/" element={<CatalogView />} />
-          <Route path="/beat/:id" element={<BeatPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/analytics" element={<AnalyticsView />} />
-          <Route path="/account" element={<AccountView />} />
-        </Routes>
+        <Stack gap="12px">
+          <Routes>
+            <Route path="/" element={<CatalogView />} />
+            <Route path="/analytics" element={<AnalyticsView />} />
+            <Route path="/account" element={<AccountView />} />
+            <Route path="/beat/:id" element={<BeatPage />} />
+            <Route path="/cart" element={<CartPage />} />
+          </Routes>
+        </Stack>
       </Container>
+
       <Player />
       <BottomTabs />
-    </div>
+    </>
   );
 }

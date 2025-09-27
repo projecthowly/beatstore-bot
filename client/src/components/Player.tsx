@@ -28,27 +28,21 @@ export default function Player() {
         bottom: "calc(var(--player-gap) + env(safe-area-inset-bottom, 0px))",
         left: 0,
         right: 0,
-        borderTop: "1px solid rgba(255,255,255,.12)",
-        background: "rgba(0,0,0,.35)",
-        backdropFilter: "blur(8px)",
+        borderTop: "1px solid var(--muted)",
+        background: "var(--surface)",
         zIndex: 30,
       }}
     >
       <Container size="xs">
         <Group justify="space-between" wrap="nowrap">
-          <Text size="sm" lineClamp={1}>
+          <Text size="sm" style={{ color: "var(--text)" }} lineClamp={1}>
             {beat.title}
           </Text>
           <Group gap="xs">
-            <ActionIcon
-              variant="subtle"
-              size="lg"
-              onClick={() => togglePlay(beat.id)}
-              title={isPlaying ? "Пауза" : "Играть"}
-            >
+            <ActionIcon variant="subtle" size="lg" onClick={() => togglePlay(beat.id)} title={isPlaying ? "Пауза" : "Играть"} style={{ color: "var(--text)" }}>
               {isPlaying ? <IconPlayerPause /> : <IconPlayerPlay />}
             </ActionIcon>
-            <ActionIcon variant="subtle" size="lg" onClick={pause} title="Стоп">
+            <ActionIcon variant="subtle" size="lg" onClick={pause} title="Стоп" style={{ color: "var(--muted)" }}>
               <IconPlayerStop />
             </ActionIcon>
           </Group>
