@@ -1,44 +1,262 @@
-:root{
-  --bg-deep: #07080C;      /* почти чёрный */
-  --text: #E7E8EF;         /* светлый текст */
-  --muted: #9AA0B3;        /* вторичный */
-  --accent-1: #6E6BFF;     /* фиолетово-синий */
-  --accent-2: #2EA1FF;     /* циан */
-  --surface-border: rgba(255,255,255,0.12);
+﻿:root {
+  --bg-deep: #07080C;
+  /* РїРѕС‡С‚Рё С‡С‘СЂРЅС‹Р№ */
+  --text: #E7E8EF;
+  /* СЃРІРµС‚Р»С‹Р№ С‚РµРєСЃС‚ */
+  --muted: #9AA0B3;
+  /* РІС‚РѕСЂРёС‡РЅС‹Р№ */
+  --accent-1: #6E6BFF;
+  /* С„РёРѕР»РµС‚РѕРІРѕ-СЃРёРЅРёР№ */
+  --accent-2: #2EA1FF;
+  /* С†РёР°РЅ */
+  --surface-border: rgba(255, 255, 255, 0.12);
 
   --topbar-h: 56px;
-  --bottombar-h: 64px;
+  --bottombar-h: 80px;
   --player-gap: 56px;
 }
 
-html,body,#root{height:100%}
-html,body{margin:0;padding:0;color:var(--text);background:var(--bg-deep)}
-*{box-sizing:border-box}
+html,
+body,
+#root {
+  height: 100%
+}
 
-/* Фон: тёмный градиент + мягкий свет, лёгкая сетка */
-body::before{
-  content:"";
-  position:fixed; inset:0; z-index:-2;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--bg-deep)
+}
+
+* {
+  box-sizing: border-box
+}
+
+/* Р¤РѕРЅ: С‚С‘РјРЅС‹Р№ РіСЂР°РґРёРµРЅС‚ + РјСЏРіРєРёР№ СЃРІРµС‚, Р»С‘РіРєР°СЏ СЃРµС‚РєР° */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
   background:
-    radial-gradient(1200px 600px at 20% -10%, rgba(110,107,255,0.25), transparent 60%),
-    radial-gradient(900px 500px at 80% 10%, rgba(46,161,255,0.18), transparent 60%),
+    radial-gradient(1200px 600px at 20% -10%, rgba(110, 107, 255, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 80% 10%, rgba(46, 161, 255, 0.18), transparent 60%),
     linear-gradient(180deg, #05060A 0%, #0B0E16 100%);
-  pointer-events:none;
+  pointer-events: none;
 }
-body::after{
-  content:"";
-  position:fixed; inset:0; z-index:-3;
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
   background-image:
-    linear-gradient(transparent 95%, rgba(255,255,255,0.04) 96%),
-    linear-gradient(90deg, transparent 95%, rgba(255,255,255,0.04) 96%);
+    linear-gradient(transparent 95%, rgba(255, 255, 255, 0.04) 96%),
+    linear-gradient(90deg, transparent 95%, rgba(255, 255, 255, 0.04) 96%);
   background-size: 32px 32px;
-  opacity:.35;
-  pointer-events:none;
+  opacity: .35;
+  pointer-events: none;
 }
 
-/* скролл аккуратный */
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:8px}
+/* СЃРєСЂРѕР»Р» Р°РєРєСѓСЂР°С‚РЅС‹Р№ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px
+}
 
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, .15);
+  border-radius: 8px
+}
+
+/* Стилизация скроллбара для основного контейнера */
+.main-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.main-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.main-scroll-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(110, 107, 255, 0.45), rgba(46, 161, 255, 0.35));
+  border-radius: 10px;
+  border: 1px solid rgba(110, 107, 255, 0.25);
+  box-shadow: 0 0 8px rgba(110, 107, 255, 0.2);
+}
+
+.main-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(110, 107, 255, 0.65), rgba(46, 161, 255, 0.55));
+  box-shadow: 0 0 12px rgba(110, 107, 255, 0.4);
+}
+
+/* СЃСЃС‹Р»РєРё/Р±Р°Р·РѕРІС‹Рµ Р°РєС†РµРЅС‚С‹ */
 /* ссылки/базовые акценты */
-a{color:#9dc9ff}
+a {
+  color: #9dc9ff
+}
+
+/* Стилизация placeholder для всех input элементов */
+input::placeholder,
+textarea::placeholder {
+  color: #9AA0B3 !important;
+  opacity: 0.6 !important;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #9AA0B3 !important;
+  opacity: 0.6 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #9AA0B3 !important;
+  opacity: 0.6 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #9AA0B3 !important;
+  opacity: 0.6 !important;
+}
+
+/* Анимация пружинящего появления для панели навигации */
+@keyframes springBounce {
+  0% {
+    transform: translate(-50%, 0) scale(0);
+  }
+  20% {
+    transform: translate(-50%, 0) scale(1.5);
+  }
+  36% {
+    transform: translate(-50%, 0) scale(0.8);
+  }
+  50% {
+    transform: translate(-50%, 0) scale(1.15);
+  }
+  62% {
+    transform: translate(-50%, 0) scale(0.92);
+  }
+  74% {
+    transform: translate(-50%, 0) scale(1.05);
+  }
+  85% {
+    transform: translate(-50%, 0) scale(0.97);
+  }
+  94% {
+    transform: translate(-50%, 0) scale(1.02);
+  }
+  100% {
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* адаптивность для мобильных устройств */
+
+/* Маленькие телефоны (до 360px) */
+@media (max-width: 360px) {
+  :root {
+    --topbar-h: 50px;
+    --bottombar-h: 72px;
+  }
+
+  .mantine-Container-root {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  body::before {
+    background:
+      radial-gradient(800px 400px at 20% -10%, rgba(110, 107, 255, 0.2), transparent 60%),
+      radial-gradient(600px 300px at 80% 10%, rgba(46, 161, 255, 0.15), transparent 60%),
+      linear-gradient(180deg, #05060A 0%, #0B0E16 100%);
+  }
+}
+
+/* Стандартные телефоны (361px - 480px) */
+@media (min-width: 361px) and (max-width: 480px) {
+  :root {
+    --topbar-h: 52px;
+    --bottombar-h: 76px;
+  }
+
+  .mantine-Container-root {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+}
+
+/* Большие телефоны и маленькие планшеты (481px - 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+  :root {
+    --topbar-h: 56px;
+    --bottombar-h: 80px;
+  }
+
+  .mantine-Container-root {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
+
+/* Планшеты (769px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  :root {
+    --topbar-h: 60px;
+    --bottombar-h: 84px;
+  }
+
+  .mantine-Container-root {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+/* Общие стили для всех мобильных устройств */
+@media (max-width: 768px) {
+  /* адаптивные размеры текста */
+  .mantine-Text-root {
+    word-break: break-word;
+  }
+
+  /* адаптивные кнопки */
+  .mantine-Button-root {
+    min-height: 36px;
+    box-sizing: border-box !important;
+  }
+
+  /* адаптивные карточки */
+  .mantine-Paper-root {
+    border-radius: 12px !important;
+  }
+
+  /* уменьшение фонового размера для мобильных */
+  body::after {
+    background-size: 24px 24px;
+    opacity: .25;
+  }
+
+  /* адаптивные модальные окна */
+  .mantine-Modal-content {
+    max-width: 95vw !important;
+  }
+
+  /* уменьшение скроллбара */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .main-scroll-container::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .main-scroll-container::-webkit-scrollbar-thumb {
+    border: none;
+  }
+}

@@ -25,5 +25,17 @@ dist-ssr
 
 # Env files
 .env
+.env.docker
 client/.env
 server/.env
+
+# Docker volumes and data
+postgres-data/
+pgadmin-data/
+
+# Uploads (temporary files)
+uploads/
+
+# Build directories
+client/dist/
+server/dist/

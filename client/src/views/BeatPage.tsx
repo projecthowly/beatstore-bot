@@ -27,18 +27,19 @@ export default function BeatPage() {
         style={{ background: "var(--surface)", borderColor: "var(--muted)" }}
       >
         <Group align="flex-start" gap="md" wrap="nowrap">
-          <Image src={beat.coverUrl} w={96} h={96} radius="md" fit="cover" alt="" />
+          <Image src={beat.coverUrl} w={80} h={80} radius="md" fit="cover" alt="" style={{ flexShrink: 0 }} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <Text size="lg" fw={600} style={{ color: "var(--text)" }} lineClamp={2}>
+            <Text size="md" fw={600} style={{ color: "var(--text)" }} lineClamp={2}>
               {beat.title}
             </Text>
-            <Text size="sm" style={{ color: "var(--muted)" }}>
+            <Text size="sm" style={{ color: "var(--muted)" }} lineClamp={1}>
               Тональность: {beat.key} • {beat.bpm} BPM
             </Text>
 
             <Group gap="sm" mt="sm">
               <Button
                 variant="outline"
+                size="sm"
                 c="var(--text)"
                 style={{ borderColor: "var(--muted)" }}
                 onClick={() => togglePlay(beat.id)}
@@ -101,7 +102,19 @@ function LicenseRow({
         <Text style={{ color: "var(--text)" }}>
           {name} — ${price}
         </Text>
-        <Button color="brand" c="var(--text)" onClick={onAdd}>
+        <Button
+          color="brand"
+          c="var(--text)"
+          onClick={onAdd}
+          style={{
+            width: "80px",
+            height: "32px",
+            minWidth: "80px",
+            maxWidth: "80px",
+            fontSize: "12px",
+            padding: "0"
+          }}
+        >
           В корзину
         </Button>
       </Group>

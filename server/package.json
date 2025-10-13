@@ -1,25 +1,31 @@
 {
   "name": "beatstore-server",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
+  "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p .",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "migrate": "node database/migrate.js"
   },
   "dependencies": {
-    "body-parser": "1.20.2",
-    "cors": "2.8.5",
-    "dotenv": "16.4.5",
-    "express": "4.19.2",
-    "morgan": "1.10.0",
-    "telegraf": "4.16.3",
-    "zod": "3.23.8"
+    "@aws-sdk/client-s3": "^3.621.0",
+    "@aws-sdk/lib-storage": "^3.621.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.16.3",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "tsx": "4.19.0",
-    "typescript": "5.6.2"
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.5.4",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
   }
 }

@@ -54,7 +54,7 @@ export const NeonButton = forwardRef<HTMLButtonElement, NeonButtonProps>(
           root: {
             background: "linear-gradient(90deg, #6E6BFF 0%, #2EA1FF 100%)",
             color: "white",
-            border: "1px solid rgba(255,255,255,0.12)",
+            border: "none",
             boxShadow:
               "0 6px 18px rgba(110,107,255,0.35), 0 6px 22px rgba(46,161,255,0.28)",
           },

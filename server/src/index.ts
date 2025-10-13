@@ -1,105 +1,438 @@
-import 'dotenv/config';
-import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import express from 'express';
-import type { Telegraf } from 'telegraf';
-import { createBot, setMenuButton } from './bot.js';
+import "dotenv/config";
+import express from "express";
+import cors, { CorsOptions } from "cors";
+import multer from "multer";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// --- эмуляция __dirname в ESM ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// (Опционально) бот
+import { createBot, setMenuButton } from "./bot.js";
+import type { Telegraf } from "telegraf";
 
-const BOT_TOKEN = process.env.BOT_TOKEN!;
-const WEBAPP_URL = process.env.WEBAPP_URL || ''; // БАЗОВАЯ ссылка без ?v=
-const BASE_URL = process.env.BASE_URL || '';     // если будет вебхук
+// Database
+import * as db from "./database.js";
+import { testConnection } from "./db.js";
+
+// S3 Storage
+import { uploadToS3, getMimeType, generateS3Key } from "./s3.js";
+
+/* ===================== ENV ===================== */
 const PORT = Number(process.env.PORT || 8080);
-const DEPLOY_TOKEN = process.env.DEPLOY_TOKEN || ''; // общий секрет для /refresh-menu
+const BASE_URL = process.env.BASE_URL || "";
+const WEBAPP_URL = process.env.WEBAPP_URL || "";
+const BOT_TOKEN = process.env.BOT_TOKEN || "";
+const DEPLOY_TOKEN = process.env.DEPLOY_TOKEN || "";
 
-let bot: Telegraf | null = null;
+/* ===================== __dirname в ESM ===================== */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-async function main() {
-  console.log('🔧 Конфиг:', {
-    PORT,
-    BASE_URL: BASE_URL || '(пусто)',
-    WEBAPP_URL: WEBAPP_URL || '(пусто)',
-  });
+/* ===================== Пути (uploads в КОРНЕ) ===================== */
+const ROOT = path.resolve(__dirname, "..", "..");   // корень репозитория
+const DATA_DIR = path.join(ROOT, "uploads");        // <repo>/uploads
+const BEATS_JSON = path.join(DATA_DIR, "beats.json");
 
-  if (!BOT_TOKEN) {
-    console.error('❌ BOT_TOKEN не задан');
-    process.exit(1);
-  }
-  if (!WEBAPP_URL) {
-    console.warn('⚠️ WEBAPP_URL пуст — кнопка Open не будет настроена');
-  }
+const DIR_COVERS = path.join(DATA_DIR, "covers");
+const DIR_AUDIO  = path.join(DATA_DIR, "audio");
+const DIR_STEMS  = path.join(DATA_DIR, "stems");
 
-  const app = express();
-  app.use(express.json());
-
-  // health
-  app.get('/health', (_req, res) => {
-    res.json({ ok: true, mode: BASE_URL ? 'webhook' : 'polling' });
-  });
-
-  // (опционально) отдача собранной мини-аппы, если когда-нибудь решишь хранить её на сервере
-  app.use('/app', express.static(path.join(__dirname, '..', 'public', 'app')));
-
-  const server = app.listen(PORT, () => {
-    console.log(`🌐 HTTP сервер поднят:  http://localhost:${PORT}`);
-  });
-
-  // --- БОТ ---
-  const b = createBot(BOT_TOKEN, WEBAPP_URL);
-  bot = b as unknown as Telegraf;
-  const webhookPath = `/webhook/${b.secretPathComponent()}`;
-
-  const stop = async () => {
-    console.log('⏹ Остановка…');
-    try { server.close(); } catch {}
-    try { await (b as any).stop('SIGINT'); } catch {}
-    process.exit(0);
-  };
-  process.on('SIGINT', stop);
-  process.on('SIGTERM', stop);
-
+/* ===================== FS helpers ===================== */
+async function ensureDirs() {
+  await fs.mkdir(DIR_COVERS, { recursive: true });
+  await fs.mkdir(DIR_AUDIO,  { recursive: true });
+  await fs.mkdir(DIR_STEMS,  { recursive: true });
   try {
+    await fs.access(BEATS_JSON).catch(async () => {
+      await fs.writeFile(BEATS_JSON, "[]", "utf8");
+    });
+  } catch {}
+}
+function fullUrlFrom(req: express.Request, rel: string) {
+  if (!rel) return "";
+  if (rel.startsWith("http://") || rel.startsWith("https://")) return rel;
+  const base = `${req.protocol}://${req.get("host")}`;
+  return `${base}${rel.startsWith("/") ? "" : "/"}${rel}`;
+}
+
+/* ===================== Multer (upload) ===================== */
+const storage = multer.diskStorage({
+  destination: (_req, file, cb) => {
+    try {
+      if (file.fieldname === "cover") return cb(null, DIR_COVERS);
+      if (file.fieldname === "mp3" || file.fieldname === "wav") return cb(null, DIR_AUDIO);
+      if (file.fieldname === "stems") return cb(null, DIR_STEMS);
+      return cb(null, DATA_DIR);
+    } catch (e) {
+      return cb(e as any, DATA_DIR);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || "";
+    const safe = path.basename(file.originalname, ext).replace(/[^a-z0-9_\-.]+/gi, "_");
+    cb(null, `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}${ext}`);
+  },
+});
+const upload = multer({ storage });
+
+/* ===================== App ===================== */
+const app = express();
+app.use(express.json());
+
+const corsOptions: CorsOptions = {
+  origin: true,
+  credentials: false,
+};
+app.use(cors(corsOptions));
+
+// Раздаём ./uploads как статику (если используется локальное хранилище)
+app.use("/uploads", express.static(DATA_DIR));
+
+// Статика React клиента (client/dist)
+const CLIENT_DIST = path.join(ROOT, "client", "dist");
+app.use(express.static(CLIENT_DIST));
+
+/* ---------- health ---------- */
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, mode: BASE_URL ? "webhook" : "polling" });
+});
+
+/* ========== USER ENDPOINTS ========== */
+
+/**
+ * GET /api/users/:telegramId
+ * Получить пользователя по Telegram ID
+ */
+app.get("/api/users/:telegramId", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    res.json({ ok: true, user });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * POST /api/users
+ * Создать нового пользователя
+ * Body: { telegram_id: number, username?: string, avatar_url?: string, role: 'producer' | 'artist' }
+ */
+app.post("/api/users", async (req, res) => {
+  try {
+    const { telegram_id, username, avatar_url, role } = req.body;
+
+    if (!telegram_id || !role) {
+      return res.status(400).json({ ok: false, error: "missing-required-fields" });
+    }
+
+    if (role !== "producer" && role !== "artist") {
+      return res.status(400).json({ ok: false, error: "invalid-role" });
+    }
+
+    // Проверяем, не существует ли уже пользователь
+    const existing = await db.findUserByTelegramId(telegram_id);
+    if (existing) {
+      return res.status(409).json({ ok: false, error: "user-already-exists", user: existing });
+    }
+
+    const user = await db.createUser({
+      telegram_id,
+      username: username || null,
+      avatar_url: avatar_url || null,
+      role,
+    });
+
+    res.json({ ok: true, user });
+  } catch (e) {
+    console.error("POST /api/users error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * PATCH /api/users/:telegramId/role
+ * Изменить роль пользователя (только artist -> producer)
+ * Body: { role: 'producer' }
+ */
+app.patch("/api/users/:telegramId/role", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { role } = req.body;
+    if (role !== "producer") {
+      return res.status(400).json({ ok: false, error: "can-only-change-to-producer" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Разрешаем смену только с artist на producer
+    if (user.role === "producer") {
+      return res.status(400).json({ ok: false, error: "already-producer" });
+    }
+
+    const updatedUser = await db.updateUser(user.id, { role });
+
+    res.json({ ok: true, user: updatedUser });
+  } catch (e) {
+    console.error("PATCH /api/users/:telegramId/role error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * PATCH /api/users/:telegramId
+ * Обновить данные пользователя (username, bio, links и т.д.)
+ */
+app.patch("/api/users/:telegramId", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    const updatedUser = await db.updateUser(user.id, req.body);
+
+    res.json({ ok: true, user: updatedUser });
+  } catch (e) {
+    console.error("PATCH /api/users/:telegramId error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * GET /api/users/:telegramId/purchases
+ * Получить историю покупок пользователя
+ */
+app.get("/api/users/:telegramId/purchases", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    const purchases = await db.getUserPurchases(user.id);
+
+    res.json({ ok: true, purchases });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId/purchases error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/* ---------- GET /api/beats ---------- */
+app.get("/api/beats", async (req, res) => {
+  try {
+    await ensureDirs();
+
+    const raw = await fs.readFile(BEATS_JSON, "utf8").catch(() => "[]");
+    let beats: any = JSON.parse(raw);
+
+    if (beats && typeof beats === "object" && !Array.isArray(beats)) {
+      beats = beats.beats || beats.list || [];
+    }
+    if (!Array.isArray(beats)) beats = [];
+
+    // нормализуем относительные пути → абсолютные URL
+    beats = beats.map((b: any) => ({
+      ...b,
+      coverUrl: fullUrlFrom(req, b.coverUrl || b.cover || ""),
+      files: {
+        mp3:   fullUrlFrom(req, b?.files?.mp3   || b?.mp3   || ""),
+        wav:   fullUrlFrom(req, b?.files?.wav   || b?.wav   || ""),
+        stems: fullUrlFrom(req, b?.files?.stems || b?.stems || ""),
+      },
+      // author — уже хранится, просто отдаём как есть
+    }));
+
+    res.json({ ok: true, beats });
+  } catch (e) {
+    console.error("GET /api/beats error:", e);
+    res.status(500).json({ ok: false, error: "read-failed" });
+  }
+});
+
+/* ---------- POST /api/beats/upload ---------- */
+app.post(
+  "/api/beats/upload",
+  upload.fields([
+    { name: "cover", maxCount: 1 },
+    { name: "mp3",   maxCount: 1 },
+    { name: "wav",   maxCount: 1 },
+    { name: "stems", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      await ensureDirs();
+
+      const title   = String(req.body?.title || "").trim();
+      const beatKey = String(req.body?.key   || "").trim() || "Am";
+      const bpm     = Number(req.body?.bpm   || 0);
+
+      // Автор приходит с клиента
+      const authorId   = String(req.body?.authorId   || "").trim();
+      const authorName = String(req.body?.authorName || "").trim();
+      const authorSlug = String(req.body?.authorSlug || "").trim();
+
+      const fCover = (req.files as any)?.cover?.[0] || null;
+      const fMp3   = (req.files as any)?.mp3?.[0]   || null;
+      const fWav   = (req.files as any)?.wav?.[0]   || null;
+      const fStems = (req.files as any)?.stems?.[0] || null;
+
+      if (!title || !bpm || !fCover || !fMp3 || !fWav) {
+        return res.status(400).json({ ok: false, error: "required-missing" });
+      }
+
+      console.log(`📤 Uploading beat "${title}" to S3...`);
+
+      // Загружаем файлы в S3
+      const coverUrl = await uploadToS3(
+        fCover.path,
+        generateS3Key("covers", fCover.originalname),
+        getMimeType(fCover.originalname)
+      );
+
+      const mp3Url = await uploadToS3(
+        fMp3.path,
+        generateS3Key("audio", fMp3.originalname),
+        getMimeType(fMp3.originalname)
+      );
+
+      const wavUrl = await uploadToS3(
+        fWav.path,
+        generateS3Key("audio", fWav.originalname),
+        getMimeType(fWav.originalname)
+      );
+
+      let stemsUrl = "";
+      if (fStems) {
+        stemsUrl = await uploadToS3(
+          fStems.path,
+          generateS3Key("stems", fStems.originalname),
+          getMimeType(fStems.originalname)
+        );
+      }
+
+      // Удаляем временные файлы после загрузки в S3
+      await fs.unlink(fCover.path).catch(() => {});
+      await fs.unlink(fMp3.path).catch(() => {});
+      await fs.unlink(fWav.path).catch(() => {});
+      if (fStems) await fs.unlink(fStems.path).catch(() => {});
+
+      const raw = await fs.readFile(BEATS_JSON, "utf8").catch(() => "[]");
+      const list: any[] = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+
+      const record = {
+        id: `beat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        key: beatKey,
+        bpm,
+        coverUrl,
+        files: { mp3: mp3Url, wav: wavUrl, stems: stemsUrl },
+        prices: { mp3: null, wav: null, stems: null },
+
+        // сохраняем автора, если пришёл
+        author: authorId || authorName ? {
+          id: authorId || `seller:${authorSlug || authorName || "unknown"}`,
+          name: authorName || "Unknown",
+          slug: authorSlug || undefined,
+        } : null,
+      };
+
+      list.unshift(record);
+      await fs.writeFile(BEATS_JSON, JSON.stringify(list, null, 2), "utf8");
+
+      console.log(`✅ Beat "${title}" uploaded successfully`);
+      res.json({ ok: true, beat: record });
+    } catch (e) {
+      console.error("POST /api/beats/upload error:", e);
+      res.status(500).json({ ok: false, error: "upload-failed" });
+    }
+  }
+);
+
+/* ---------- SPA Fallback для React Router ---------- */
+// Все неизвестные маршруты отдают index.html (должно быть в конце!)
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(CLIENT_DIST, "index.html"));
+});
+
+/* ===================== Start HTTP ===================== */
+const server = app.listen(PORT, async () => {
+  console.log(`\n🌐 HTTP:        http://localhost:${PORT}`);
+  console.log(`📁 DATA_DIR:    ${DATA_DIR}`);
+  console.log(`📄 BEATS_JSON:  ${BEATS_JSON}\n`);
+
+  // Проверяем подключение к БД
+  console.log("🔌 Проверка подключения к PostgreSQL...");
+  const dbConnected = await testConnection();
+  if (!dbConnected) {
+    console.log("⚠️  ВНИМАНИЕ: База данных недоступна! Проверьте настройки в .env");
+  }
+  console.log("");
+});
+
+/* ===================== Telegram (опционально) ===================== */
+let bot: Telegraf | null = null;
+async function startBot() {
+  if (!BOT_TOKEN) {
+    console.log("🤖 BOT_TOKEN не задан — бот не запускается (это ок для локального API).");
+    return;
+  }
+  try {
+    // @ts-ignore
+    const b = createBot(BOT_TOKEN, WEBAPP_URL);
+    bot = b as unknown as Telegraf;
+
     if (BASE_URL) {
-      const webhookUrl = `${BASE_URL}${webhookPath}`;
-      await (b as any).telegram.setWebhook(webhookUrl);
-      app.use(webhookPath, (b as any).webhookCallback(webhookPath));
-      console.log(`✅ Webhook установлен: ${webhookUrl}`);
+      const webhookPath = `/webhook/${b.secretPathComponent()}`;
+      // @ts-ignore
+      await b.telegram.setWebhook(`${BASE_URL}${webhookPath}`);
+      // @ts-ignore
+      app.use(webhookPath, b.webhookCallback(webhookPath));
+      console.log("✅ Webhook установлен:", `${BASE_URL}${webhookPath}`);
     } else {
-      await (b as any).telegram.deleteWebhook().catch(() => {});
-      await (b as any).launch();
-      console.log('✅ Bot в режиме long polling');
+      // @ts-ignore
+      await b.telegram.deleteWebhook().catch(() => {});
+      // @ts-ignore
+      await b.launch();
+      console.log("✅ Bot: long polling");
     }
 
     if (WEBAPP_URL) {
-      await setMenuButton(b as any, 'Open', WEBAPP_URL);
+      // @ts-ignore
+      await setMenuButton(b, "Open", WEBAPP_URL);
     }
   } catch (e) {
-    console.error('❌ Ошибка запуска бота:', e);
+    console.error("❌ Бот не запустился:", e);
   }
-
-  // --- Эндпоинт для CD: обновить кнопку после деплоя фронта ---
-  app.post('/refresh-menu', async (req, res) => {
-    try {
-      if (!DEPLOY_TOKEN) return res.status(500).json({ ok: false, error: 'DEPLOY_TOKEN not set' });
-      const token = req.headers['x-deploy-token'];
-      if (token !== DEPLOY_TOKEN) return res.status(401).json({ ok: false, error: 'unauthorized' });
-
-      const buildId = String(req.body?.buildId || Date.now());
-      if (!bot || !WEBAPP_URL) return res.status(500).json({ ok: false, error: 'no-bot-or-url' });
-
-      await setMenuButton(bot as any, 'Open', WEBAPP_URL, buildId);
-      res.json({ ok: true, buildId });
-    } catch (e) {
-      console.error('refresh-menu error:', e);
-      res.status(500).json({ ok: false });
-    }
-  });
 }
+startBot().catch(console.error);
 
-main().catch((e) => {
-  console.error('❌ Критическая ошибка:', e);
-  process.exit(1);
-});
+process.on("SIGINT", () => { try { server.close(); } catch {} try { /* @ts-ignore */ bot?.stop?.("SIGINT"); } catch {} process.exit(0); });
+process.on("SIGTERM", () => { try { server.close(); } catch {} try { /* @ts-ignore */ bot?.stop?.("SIGTERM"); } catch {} process.exit(0); });

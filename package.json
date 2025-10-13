@@ -1,0 +1,26 @@
+{
+  "name": "beatstore-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd client && npm install && npm run build",
+    "build:server": "cd server && npm install && npm run build",
+    "migrate": "cd server && node database/migrate.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@mantine/core": "7.17.8",
+    "@mantine/dropzone": "7.17.8",
+    "@mantine/hooks": "7.17.8",
+    "@mantine/notifications": "7.17.8",
+    "@tabler/icons-react": "3.35.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "zustand": "4.5.7"
+  }
+}

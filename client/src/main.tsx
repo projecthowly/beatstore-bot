@@ -1,37 +1,39 @@
-import React from "react";
+﻿// client/src/main.tsx
 import ReactDOM from "react-dom/client";
+import { MantineProvider } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { BrowserRouter } from "react-router-dom";
-import { MantineProvider, createTheme } from "@mantine/core";
-import "@mantine/core/styles.css";
-import "./index.css";
 import App from "./App";
 
-declare global {
-  interface Window {
-    Telegram?: { WebApp: { ready: () => void; expand: () => void } };
-  }
-}
-function bootstrapTelegram(){
-  const tg = window.Telegram?.WebApp; try{ tg?.ready(); tg?.expand(); }catch{}
-}
+import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
+import "./index.css";
 
-const theme = createTheme({
-  primaryColor: "brand",
-  colors: {
-    brand: Array(10).fill("#6E6BFF") as any,
-    cyanx: Array(10).fill("#2EA1FF") as any,
-  },
-  fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-  defaultRadius: "md",
-});
-
-bootstrapTelegram();
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <MantineProvider theme={theme}>
-      <BrowserRouter basename="/beatstore-bot">
-        <App/>
-      </BrowserRouter>
-    </MantineProvider>
-  </React.StrictMode>
+  <MantineProvider
+    theme={{
+      primaryColor: "indigo",
+      fontFamily: "Inter, system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif",
+      colors: {
+        dark: [
+          "#101114",
+          "#0b0a0d",
+          "#15161c",
+          "#1a1c25",
+          "#202334",
+          "#21263d",
+          "#263058",
+          "#2c3570",
+          "#32408c",
+          "#3a49a3",
+        ],
+      },
+    }}
+    defaultColorScheme="dark"
+  >
+    <Notifications position="top-right" />
+    <BrowserRouter basename="/beatstore-bot">
+      <App />
+    </BrowserRouter>
+  </MantineProvider>
 );
