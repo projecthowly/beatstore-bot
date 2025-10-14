@@ -249,82 +249,7 @@ export const useApp = create<AppState>((set, get) => {
   );
   audio.addEventListener("ended", () => set({ isPlaying: false }));
 
-  // Инициализация: загружаем биты и создаём/загружаем пользователя
-  (async () => {
-    console.log("🚀 Начало инициализации пользователя, API_BASE:", API_BASE);
-    try {
-      // Загружаем биты в фоне (не блокирует инициализацию пользователя)
-      if (!get()._bootDone) {
-        console.log("📦 Загружаем биты...");
-        get().bootstrap().catch((e) => console.error("❌ Ошибка загрузки битов:", e));
-      }
-
-      // Если есть telegramId, проверяем/создаём пользователя в БД
-      if (telegramData.telegramId) {
-        try {
-          console.log("🔍 Проверяем пользователя в БД...", telegramData.telegramId);
-          const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
-          console.log("📡 Ответ от сервера:", response.status, response.statusText);
-
-          if (response.status === 404) {
-            // Пользователя НЕТ в БД - создаём БЕЗ роли (role = NULL)
-            console.log("👋 Пользователь не найден в БД, создаём с пустой ролью...");
-            const createResponse = await fetch(`${API_BASE}/api/users`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                telegram_id: telegramData.telegramId,
-                username: telegramData.username,
-                // role не передаём - будет NULL в БД
-              }),
-            });
-            const createData = await createResponse.json();
-            console.log("✅ Пользователь создан с role=NULL:", createData);
-
-            // Устанавливаем сессию для нового пользователя - покажется модалка
-            const newUserSession: Session = { role: "artist", isNewUser: true };
-            set({ session: newUserSession, userInitialized: true });
-            saveSessionToLS(newUserSession);
-            console.log("🎭 Установлена сессия для нового пользователя (isNewUser=true)");
-
-          } else if (response.ok) {
-            // Пользователь СУЩЕСТВУЕТ - загружаем его роль из БД
-            const data = await response.json();
-            console.log("✅ Пользователь найден в БД:", data.user);
-            if (data.user) {
-              // Если role === null → показываем модалку
-              const hasRole = data.user.role !== null;
-              const existingUserSession: Session = {
-                role: data.user.role || "artist", // фоллбэк если null
-                isNewUser: !hasRole, // если role === null → isNewUser = true
-              };
-              set({ session: existingUserSession, userInitialized: true });
-              saveSessionToLS(existingUserSession);
-              console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
-            } else {
-              console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
-              set({ userInitialized: true });
-            }
-          } else {
-            console.error("❌ Неожиданный статус ответа:", response.status);
-            set({ userInitialized: true });
-          }
-        } catch (e) {
-          console.error("❌ Ошибка при проверке/создании пользователя:", e);
-          set({ userInitialized: true }); // Даже при ошибке, чтобы не зависнуть на загрузке
-        }
-      } else {
-        console.log("⚠️ Нет telegramId, пропускаем инициализацию пользователя");
-        set({ userInitialized: true }); // Нет telegramId - сразу инициализирован
-      }
-    } catch (e) {
-      console.error("❌ Критическая ошибка инициализации:", e);
-      set({ userInitialized: true }); // При любой ошибке разблокируем UI
-    }
-    console.log("✅ Инициализация завершена, userInitialized =", get().userInitialized);
-  })();
-
-  // Начальная сессия (будет обновлена асинхронно из БД в блоке выше)
+  // Начальная сессия (будет обновлена асинхронно из БД)
   let initialSession: Session;
   if (telegramData.role) {
     // Данные пришли от бота через URL
@@ -698,3 +623,79 @@ export const useApp = create<AppState>((set, get) => {
     },
   };
 });
+
+// Асинхронная инициализация пользователя - выполняется ПОСЛЕ создания store
+(async () => {
+  console.log("🚀 Начало инициализации пользователя, API_BASE:", API_BASE);
+  try {
+    // Загружаем биты в фоне
+    const state = useApp.getState();
+    if (!state._bootDone) {
+      console.log("📦 Загружаем биты...");
+      state.bootstrap().catch((e) => console.error("❌ Ошибка загрузки битов:", e));
+    }
+
+    // Если есть telegramId, проверяем/создаём пользователя в БД
+    if (telegramData.telegramId) {
+      try {
+        console.log("🔍 Проверяем пользователя в БД...", telegramData.telegramId);
+        const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
+        console.log("📡 Ответ от сервера:", response.status, response.statusText);
+
+        if (response.status === 404) {
+          // Пользователя НЕТ в БД - создаём БЕЗ роли (role = NULL)
+          console.log("👋 Пользователь не найден в БД, создаём с пустой ролью...");
+          const createResponse = await fetch(`${API_BASE}/api/users`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              telegram_id: telegramData.telegramId,
+              username: telegramData.username,
+              // role не передаём - будет NULL в БД
+            }),
+          });
+          const createData = await createResponse.json();
+          console.log("✅ Пользователь создан с role=NULL:", createData);
+
+          // Устанавливаем сессию для нового пользователя - покажется модалка
+          const newUserSession: Session = { role: "artist", isNewUser: true };
+          useApp.setState({ session: newUserSession, userInitialized: true });
+          saveSessionToLS(newUserSession);
+          console.log("🎭 Установлена сессия для нового пользователя (isNewUser=true)");
+
+        } else if (response.ok) {
+          // Пользователь СУЩЕСТВУЕТ - загружаем его роль из БД
+          const data = await response.json();
+          console.log("✅ Пользователь найден в БД:", data.user);
+          if (data.user) {
+            // Если role === null → показываем модалку
+            const hasRole = data.user.role !== null;
+            const existingUserSession: Session = {
+              role: data.user.role || "artist", // фоллбэк если null
+              isNewUser: !hasRole, // если role === null → isNewUser = true
+            };
+            useApp.setState({ session: existingUserSession, userInitialized: true });
+            saveSessionToLS(existingUserSession);
+            console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
+          } else {
+            console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
+            useApp.setState({ userInitialized: true });
+          }
+        } else {
+          console.error("❌ Неожиданный статус ответа:", response.status);
+          useApp.setState({ userInitialized: true });
+        }
+      } catch (e) {
+        console.error("❌ Ошибка при проверке/создании пользователя:", e);
+        useApp.setState({ userInitialized: true }); // Даже при ошибке, чтобы не зависнуть на загрузке
+      }
+    } else {
+      console.log("⚠️ Нет telegramId, пропускаем инициализацию пользователя");
+      useApp.setState({ userInitialized: true }); // Нет telegramId - сразу инициализирован
+    }
+  } catch (e) {
+    console.error("❌ Критическая ошибка инициализации:", e);
+    useApp.setState({ userInitialized: true }); // При любой ошибке разблокируем UI
+  }
+  console.log("✅ Инициализация завершена, userInitialized =", useApp.getState().userInitialized);
+})();
