@@ -254,20 +254,46 @@ export const useApp = create<AppState>((set, get) => {
     } catch {}
   })();
 
-  // Загружаем сессию: приоритет у данных из Telegram, затем из LS
+  // Загружаем сессию: приоритет у данных из Telegram, затем из БД, затем из LS
   let initialSession: Session;
   if (telegramData.role) {
-    // Данные пришли от бота
+    // Данные пришли от бота через URL
     initialSession = {
       role: telegramData.role,
       isNewUser: telegramData.isNewUser,
     };
     console.log("✅ Сессия загружена из URL:", initialSession);
   } else {
-    // Фоллбэк на localStorage
+    // Фоллбэк: если есть telegramId, будем загружать из БД асинхронно
     const savedSession = loadSessionFromLS();
-    initialSession = savedSession || { role: "producer", isNewUser: true };
-    console.log("📦 Сессия загружена из localStorage:", initialSession);
+    initialSession = savedSession || { role: "artist", isNewUser: true };
+    console.log("📦 Сессия загружена из localStorage (временно):", initialSession);
+
+    // Если есть telegramId, асинхронно загрузим роль из БД
+    if (telegramData.telegramId) {
+      (async () => {
+        try {
+          console.log("🔄 Загружаем пользователя из БД...", telegramData.telegramId);
+          const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              const dbSession: Session = {
+                role: data.user.role,
+                isNewUser: false,
+              };
+              console.log("✅ Сессия загружена из БД:", dbSession);
+              set({ session: dbSession });
+              saveSessionToLS(dbSession);
+            }
+          } else {
+            console.log("ℹ️ Пользователь не найден в БД, используем localStorage");
+          }
+        } catch (e) {
+          console.error("❌ Ошибка при загрузке пользователя из БД:", e);
+        }
+      })();
+    }
   }
 
   return {
