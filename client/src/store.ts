@@ -7,7 +7,7 @@ const API_BASE =
   "http://localhost:8080";
 
 /* ========= Telegram Data ========= */
-// Получаем данные из URL параметров (переданных ботом)
+// Получаем данные из URL параметров (переданных ботом) или из Telegram Web App SDK
 function getTelegramDataFromUrl(): {
   telegramId: number | null;
   username: string | null;
@@ -15,28 +15,40 @@ function getTelegramDataFromUrl(): {
   isNewUser: boolean;
 } {
   try {
+    // Пытаемся получить данные из URL параметров
     const params = new URLSearchParams(window.location.search);
     const tgId = params.get("tgId");
     const username = params.get("username");
     const role = params.get("role");
     const isNew = params.get("isNew");
 
+    // Если данных нет в URL, пытаемся получить из Telegram Web App SDK
+    let telegramId: number | null = tgId ? parseInt(tgId, 10) : null;
+    let usernameResult: string | null = username || null;
+
+    if (!telegramId && (window as any).Telegram?.WebApp?.initDataUnsafe?.user) {
+      const tgUser = (window as any).Telegram.WebApp.initDataUnsafe.user;
+      telegramId = tgUser.id || null;
+      usernameResult = tgUser.username || tgUser.first_name || null;
+      console.log("📱 Данные получены из Telegram Web App SDK:", tgUser);
+    }
+
     console.log("🔍 getTelegramDataFromUrl:", {
       url: window.location.href,
-      tgId,
-      username,
-      role,
-      isNew,
+      urlParams: { tgId, username, role, isNew },
+      fromSDK: !tgId && telegramId ? true : false,
+      finalData: { telegramId, username: usernameResult, role, isNew },
       parsedIsNew: isNew === "1",
     });
 
     return {
-      telegramId: tgId ? parseInt(tgId, 10) : null,
-      username: username || null,
+      telegramId,
+      username: usernameResult,
       role: role === "producer" || role === "artist" ? role : null,
       isNewUser: isNew === "1",
     };
-  } catch {
+  } catch (e) {
+    console.error("❌ Ошибка при получении Telegram данных:", e);
     return { telegramId: null, username: null, role: null, isNewUser: true };
   }
 }
@@ -539,7 +551,13 @@ export const useApp = create<AppState>((set, get) => {
 
     /* === РОЛИ === */
     async selectRole(role: "producer" | "artist") {
-      console.log("🎭 selectRole вызван:", { role, telegramId: get().telegramId });
+      console.log("🎭 selectRole вызван:", {
+        role,
+        telegramId: get().telegramId,
+        telegramDataCached: telegramData,
+        currentUrl: window.location.href,
+        currentParams: window.location.search
+      });
 
       const newSession: Session = { role, isNewUser: false };
       set({ session: newSession });
