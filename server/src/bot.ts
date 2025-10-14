@@ -37,12 +37,7 @@ export function createBot(token: string, webappUrl: string) {
       });
 
       await ctx.reply(
-        `Привет, ${name}! Нажми кнопку ниже, чтобы открыть магазин.`,
-        Markup.keyboard([
-          [Markup.button.webApp("Open", url)]
-        ])
-          .resize()
-          .oneTime()
+        `Привет, ${name}! 👋\n\nДобро пожаловать в Beatstore - маркетплейс битов и инструменталов.\n\nНажми синюю кнопку Menu внизу, чтобы открыть магазин.`
       );
     } catch (error) {
       console.error("Ошибка при инициализации пользователя:", error);
@@ -75,10 +70,7 @@ export function createBot(token: string, webappUrl: string) {
       });
 
       await ctx.reply(
-        "Жми кнопку Open, чтобы открыть магазин.",
-        Markup.keyboard([[Markup.button.webApp("Open", url)]])
-          .resize()
-          .oneTime()
+        "Нажми синюю кнопку Menu внизу, чтобы открыть магазин."
       );
     } catch (error) {
       console.error("Ошибка при обработке сообщения:", error);
@@ -129,4 +121,5 @@ export async function setMenuButton(bot: Telegraf, text: string, webappUrl: stri
       web_app: { url }
     }
   });
+  console.log(`✅ Menu Button установлен: "${text}" → ${url}`);
 }
