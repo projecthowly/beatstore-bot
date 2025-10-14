@@ -23,7 +23,7 @@ CREATE TABLE users (
     telegram_id BIGINT UNIQUE NOT NULL,
     username VARCHAR(255),
     avatar_url TEXT,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('producer', 'artist')),
+    role VARCHAR(20) CHECK (role IN ('producer', 'artist')), -- NULL = роль не выбрана
 
     -- Для продюсеров
     bio TEXT,

@@ -125,17 +125,19 @@ app.get("/api/users/:telegramId", async (req, res) => {
 /**
  * POST /api/users
  * Создать нового пользователя
- * Body: { telegram_id: number, username?: string, avatar_url?: string, role: 'producer' | 'artist' }
+ * Body: { telegram_id: number, username?: string, avatar_url?: string, role?: 'producer' | 'artist' | null }
+ * Если role не указана - создаётся с role = NULL (пользователь ещё не выбрал роль)
  */
 app.post("/api/users", async (req, res) => {
   try {
     const { telegram_id, username, avatar_url, role } = req.body;
 
-    if (!telegram_id || !role) {
-      return res.status(400).json({ ok: false, error: "missing-required-fields" });
+    if (!telegram_id) {
+      return res.status(400).json({ ok: false, error: "missing-telegram-id" });
     }
 
-    if (role !== "producer" && role !== "artist") {
+    // Проверка роли только если она передана
+    if (role !== undefined && role !== null && role !== "producer" && role !== "artist") {
       return res.status(400).json({ ok: false, error: "invalid-role" });
     }
 
@@ -149,9 +151,10 @@ app.post("/api/users", async (req, res) => {
       telegram_id,
       username: username || null,
       avatar_url: avatar_url || null,
-      role,
+      role: role || null, // NULL если не передана
     });
 
+    console.log(`✅ Пользователь создан: telegram_id=${telegram_id}, role=${role || "NULL"}`);
     res.json({ ok: true, user });
   } catch (e) {
     console.error("POST /api/users error:", e);

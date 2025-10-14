@@ -14,7 +14,7 @@ export interface User {
   telegram_id: number;
   username: string | null;
   avatar_url: string | null;
-  role: UserRole;
+  role: UserRole | null; // NULL = роль ещё не выбрана
 
   // Для продюсеров
   bio: string | null;
@@ -34,7 +34,7 @@ export interface CreateUserInput {
   telegram_id: number;
   username?: string;
   avatar_url?: string;
-  role: UserRole;
+  role?: UserRole | null; // Опционально, по умолчанию NULL
 }
 
 export interface UpdateUserInput {

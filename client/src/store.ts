@@ -260,38 +260,40 @@ export const useApp = create<AppState>((set, get) => {
           const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
 
           if (response.status === 404) {
-            // Пользователя НЕТ в БД - создаём и показываем модалку
-            console.log("👋 Пользователь не найден в БД, создаём...");
+            // Пользователя НЕТ в БД - создаём БЕЗ роли (role = NULL)
+            console.log("👋 Пользователь не найден в БД, создаём с пустой ролью...");
             const createResponse = await fetch(`${API_BASE}/api/users`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 telegram_id: telegramData.telegramId,
                 username: telegramData.username,
-                role: "artist", // временная роль
+                // role не передаём - будет NULL в БД
               }),
             });
             const createData = await createResponse.json();
-            console.log("✅ Пользователь создан:", createData);
+            console.log("✅ Пользователь создан с role=NULL:", createData);
 
             // Устанавливаем сессию для нового пользователя - покажется модалка
             const newUserSession: Session = { role: "artist", isNewUser: true };
             set({ session: newUserSession });
             saveSessionToLS(newUserSession);
-            console.log("🎭 Установлена сессия для нового пользователя:", newUserSession);
+            console.log("🎭 Установлена сессия для нового пользователя (isNewUser=true)");
 
           } else if (response.ok) {
             // Пользователь СУЩЕСТВУЕТ - загружаем его роль из БД
             const data = await response.json();
             console.log("✅ Пользователь найден в БД:", data.user);
             if (data.user) {
+              // Если role === null → показываем модалку
+              const hasRole = data.user.role !== null;
               const existingUserSession: Session = {
-                role: data.user.role,
-                isNewUser: false, // не новый пользователь
+                role: data.user.role || "artist", // фоллбэк если null
+                isNewUser: !hasRole, // если role === null → isNewUser = true
               };
               set({ session: existingUserSession });
               saveSessionToLS(existingUserSession);
-              console.log("🔄 Загружена сессия существующего пользователя:", existingUserSession);
+              console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
             }
           }
         } catch (e) {
