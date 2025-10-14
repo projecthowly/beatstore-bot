@@ -26,13 +26,15 @@ export function createBot(token: string, webappUrl: string) {
       if (!user) {
         console.log(`👋 Новый пользователь: ${username} (${telegramId}) - покажем модалку выбора роли`);
         isNewUser = true;
+      } else {
+        console.log(`🔙 Вернулся пользователь: ${username} (${telegramId}), роль: ${user.role}`);
       }
 
       // Формируем URL с параметрами пользователя
       const url = buildWebappUrl(webappUrl, {
         telegramId,
         username,
-        role: user?.role || "producer", // временная роль для новых пользователей
+        role: user?.role || "artist", // для новых - artist (покажется модалка), для существующих - их роль из БД
         isNewUser,
       });
 
@@ -70,7 +72,7 @@ export function createBot(token: string, webappUrl: string) {
       const url = buildWebappUrl(webappUrl, {
         telegramId,
         username,
-        role: user?.role || "producer",
+        role: user?.role || "artist",
         isNewUser,
       });
 
