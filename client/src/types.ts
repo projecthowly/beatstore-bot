@@ -10,7 +10,7 @@ export type Seller = {
 
 export type Session = {
   role: 'producer' | 'artist';
-  isNewUser?: boolean; // для определения нового пользователя
+  isNewUser: boolean; // обязательное поле для определения нового пользователя
 };
 
 export type Beat = {

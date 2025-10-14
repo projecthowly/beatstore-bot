@@ -317,11 +317,17 @@ export const useApp = create<AppState>((set, get) => {
       return get().viewingOwnerId === get().me.id;
     },
     goToOwnStore() {
+      const newSession: Session = {
+        role: "producer",
+        isNewUser: get().session.isNewUser  // ✅ Сохраняем флаг
+      };
       set({
-        session: { role: "producer" },
+        session: newSession,
         seller: get().me,
         viewingOwnerId: get().me.id,
       });
+      saveSessionToLS(newSession);  // ✅ Персистим в localStorage
+
       const url = new URL(window.location.href);
       url.searchParams.delete("mode");
       url.searchParams.delete("seller");
