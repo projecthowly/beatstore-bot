@@ -121,20 +121,20 @@ function saveProfileToLS(p: Profile) {
   } catch {}
 }
 
-function loadSessionFromLS(): Session | null {
-  try {
-    const raw = localStorage.getItem(LS_SESSION);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s || typeof s !== "object") return null;
-    return {
-      role: s.role === "artist" ? "artist" : "producer",
-      isNewUser: s.isNewUser === true,
-    };
-  } catch {
-    return null;
-  }
-}
+// function loadSessionFromLS(): Session | null {
+//   try {
+//     const raw = localStorage.getItem(LS_SESSION);
+//     if (!raw) return null;
+//     const s = JSON.parse(raw);
+//     if (!s || typeof s !== "object") return null;
+//     return {
+//       role: s.role === "artist" ? "artist" : "producer",
+//       isNewUser: s.isNewUser === true,
+//     };
+//   } catch {
+//     return null;
+//   }
+// }
 function saveSessionToLS(s: Session) {
   try {
     localStorage.setItem(LS_SESSION, JSON.stringify(s));
