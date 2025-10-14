@@ -17,7 +17,7 @@ import { GlobalMarketView } from "./views/GlobalMarketView";
 import { useApp } from "./store";
 
 export default function App() {
-  const { initFromUrl, session, selectRole } = useApp();
+  const { initFromUrl, session, selectRole, userInitialized } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,6 +33,26 @@ export default function App() {
       navigate("/");
     }
   };
+
+  // Показываем загрузку пока идёт проверка/создание пользователя
+  if (!userInitialized) {
+    return (
+      <Box
+        style={{
+          height: "100dvh",
+          background: "var(--bg)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Box style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎵</div>
+          <div style={{ color: "var(--text)", opacity: 0.7 }}>Загрузка...</div>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <>
