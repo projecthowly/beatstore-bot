@@ -617,21 +617,35 @@ export const useApp = create<AppState>((set, get) => {
       }
 
       try {
-        // Если пользователь новый - обновляем роль через PATCH /api/users/:id (не /role!)
-        // потому что он уже создан в БД с временной ролью "artist" при инициализации
-        console.log("📤 Обновляем роль пользователя через PATCH /api/users/:telegramId:", {
-          telegramId,
-          role,
-        });
+        // Сначала проверяем существует ли пользователь
+        console.log("🔍 Проверяем существует ли пользователь...");
+        const checkResponse = await fetch(`${API_BASE}/api/users/${telegramId}`);
 
-        const response = await fetch(`${API_BASE}/api/users/${telegramId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
-        });
-
-        const data = await response.json();
-        console.log("✅ Ответ от сервера:", { status: response.status, data });
+        if (checkResponse.status === 404) {
+          // Пользователь НЕ создан - создаём его с выбранной ролью
+          console.log("👋 Пользователь ещё не создан, создаём с ролью:", role);
+          const createResponse = await fetch(`${API_BASE}/api/users`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              telegram_id: telegramId,
+              username: telegramData.username,
+              role, // выбранная роль
+            }),
+          });
+          const createData = await createResponse.json();
+          console.log("✅ Пользователь создан:", createData);
+        } else {
+          // Пользователь существует - обновляем роль
+          console.log("📤 Обновляем роль пользователя через PATCH:", role);
+          const response = await fetch(`${API_BASE}/api/users/${telegramId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role }),
+          });
+          const data = await response.json();
+          console.log("✅ Роль обновлена:", { status: response.status, data });
+        }
       } catch (e) {
         console.error("❌ Ошибка при сохранении роли:", e);
       }
