@@ -539,6 +539,8 @@ export const useApp = create<AppState>((set, get) => {
 
     /* === РОЛИ === */
     async selectRole(role: "producer" | "artist") {
+      console.log("🎭 selectRole вызван:", { role, telegramId: get().telegramId });
+
       const newSession: Session = { role, isNewUser: false };
       set({ session: newSession });
       saveSessionToLS(newSession);
@@ -547,7 +549,13 @@ export const useApp = create<AppState>((set, get) => {
       const telegramId = get().telegramId;
       if (telegramId) {
         try {
-          await fetch(`${API_BASE}/api/users`, {
+          console.log("📤 Отправляем POST /api/users:", {
+            telegram_id: telegramId,
+            username: telegramData.username,
+            role,
+          });
+
+          const response = await fetch(`${API_BASE}/api/users`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -556,9 +564,14 @@ export const useApp = create<AppState>((set, get) => {
               role,
             }),
           });
+
+          const data = await response.json();
+          console.log("✅ Ответ от /api/users:", { status: response.status, data });
         } catch (e) {
-          console.error("Ошибка при создании пользователя:", e);
+          console.error("❌ Ошибка при создании пользователя:", e);
         }
+      } else {
+        console.warn("⚠️ telegramId отсутствует, пользователь не сохранён в БД!");
       }
     },
 
