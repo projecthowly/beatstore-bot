@@ -169,6 +169,7 @@ type AppState = {
   session: Session;
   viewingOwnerId: string | null;
   telegramId: number | null; // ID пользователя из Telegram
+  userInitialized: boolean; // Завершена ли проверка/создание пользователя
 
   playingBeatId: string | null;
   isPlaying: boolean;
@@ -276,7 +277,7 @@ export const useApp = create<AppState>((set, get) => {
 
             // Устанавливаем сессию для нового пользователя - покажется модалка
             const newUserSession: Session = { role: "artist", isNewUser: true };
-            set({ session: newUserSession });
+            set({ session: newUserSession, userInitialized: true });
             saveSessionToLS(newUserSession);
             console.log("🎭 Установлена сессия для нового пользователя (isNewUser=true)");
 
@@ -291,16 +292,21 @@ export const useApp = create<AppState>((set, get) => {
                 role: data.user.role || "artist", // фоллбэк если null
                 isNewUser: !hasRole, // если role === null → isNewUser = true
               };
-              set({ session: existingUserSession });
+              set({ session: existingUserSession, userInitialized: true });
               saveSessionToLS(existingUserSession);
               console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
             }
           }
         } catch (e) {
           console.error("❌ Ошибка при проверке/создании пользователя:", e);
+          set({ userInitialized: true }); // Даже при ошибке, чтобы не зависнуть на загрузке
         }
+      } else {
+        set({ userInitialized: true }); // Нет telegramId - сразу инициализирован
       }
-    } catch {}
+    } catch {
+      set({ userInitialized: true }); // При любой ошибке разблокируем UI
+    }
   })();
 
   // Начальная сессия (будет обновлена асинхронно из БД в блоке выше)
@@ -325,6 +331,7 @@ export const useApp = create<AppState>((set, get) => {
     session: initialSession,
     viewingOwnerId: initialMe.id,
     telegramId: telegramData.telegramId,
+    userInitialized: false, // Изначально false, станет true после проверки БД
 
     playingBeatId: null,
     isPlaying: false,
