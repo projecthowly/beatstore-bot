@@ -597,40 +597,41 @@ export const useApp = create<AppState>((set, get) => {
 
     /* === РОЛИ === */
     async selectRole(role: "producer" | "artist") {
+      const currentIsNew = get().session.isNewUser;
       console.log("🎭 selectRole вызван:", {
         role,
         telegramId: get().telegramId,
-        telegramDataCached: telegramData,
-        currentUrl: window.location.href,
-        currentParams: window.location.search
+        isNewUser: currentIsNew,
       });
 
       const newSession: Session = { role, isNewUser: false };
       set({ session: newSession });
       saveSessionToLS(newSession);
 
-      // Обновляем роль на сервере (пользователь уже создан ботом), если есть telegramId
       const telegramId = get().telegramId;
-      if (telegramId) {
-        try {
-          console.log("📤 Обновляем роль через PATCH /api/users/:telegramId/role:", {
-            telegramId,
-            role,
-          });
+      if (!telegramId) {
+        console.warn("⚠️ telegramId отсутствует, пользователь не сохранён в БД!");
+        return;
+      }
 
-          const response = await fetch(`${API_BASE}/api/users/${telegramId}/role`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role }),
-          });
+      try {
+        // Если пользователь новый - обновляем роль через PATCH /api/users/:id (не /role!)
+        // потому что он уже создан в БД с временной ролью "artist" при инициализации
+        console.log("📤 Обновляем роль пользователя через PATCH /api/users/:telegramId:", {
+          telegramId,
+          role,
+        });
 
-          const data = await response.json();
-          console.log("✅ Ответ от сервера:", { status: response.status, data });
-        } catch (e) {
-          console.error("❌ Ошибка при обновлении роли:", e);
-        }
-      } else {
-        console.warn("⚠️ telegramId отсутствует, роль не обновлена в БД!");
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role }),
+        });
+
+        const data = await response.json();
+        console.log("✅ Ответ от сервера:", { status: response.status, data });
+      } catch (e) {
+        console.error("❌ Ошибка при сохранении роли:", e);
       }
     },
 
