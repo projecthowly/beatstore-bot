@@ -251,14 +251,20 @@ export const useApp = create<AppState>((set, get) => {
 
   // Инициализация: загружаем биты и создаём/загружаем пользователя
   (async () => {
+    console.log("🚀 Начало инициализации пользователя, API_BASE:", API_BASE);
     try {
-      if (!get()._bootDone) await get().bootstrap();
+      // Загружаем биты в фоне (не блокирует инициализацию пользователя)
+      if (!get()._bootDone) {
+        console.log("📦 Загружаем биты...");
+        get().bootstrap().catch((e) => console.error("❌ Ошибка загрузки битов:", e));
+      }
 
       // Если есть telegramId, проверяем/создаём пользователя в БД
       if (telegramData.telegramId) {
         try {
           console.log("🔍 Проверяем пользователя в БД...", telegramData.telegramId);
           const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
+          console.log("📡 Ответ от сервера:", response.status, response.statusText);
 
           if (response.status === 404) {
             // Пользователя НЕТ в БД - создаём БЕЗ роли (role = NULL)
@@ -295,18 +301,27 @@ export const useApp = create<AppState>((set, get) => {
               set({ session: existingUserSession, userInitialized: true });
               saveSessionToLS(existingUserSession);
               console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
+            } else {
+              console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
+              set({ userInitialized: true });
             }
+          } else {
+            console.error("❌ Неожиданный статус ответа:", response.status);
+            set({ userInitialized: true });
           }
         } catch (e) {
           console.error("❌ Ошибка при проверке/создании пользователя:", e);
           set({ userInitialized: true }); // Даже при ошибке, чтобы не зависнуть на загрузке
         }
       } else {
+        console.log("⚠️ Нет telegramId, пропускаем инициализацию пользователя");
         set({ userInitialized: true }); // Нет telegramId - сразу инициализирован
       }
-    } catch {
+    } catch (e) {
+      console.error("❌ Критическая ошибка инициализации:", e);
       set({ userInitialized: true }); // При любой ошибке разблокируем UI
     }
+    console.log("✅ Инициализация завершена, userInitialized =", get().userInitialized);
   })();
 
   // Начальная сессия (будет обновлена асинхронно из БД в блоке выше)
