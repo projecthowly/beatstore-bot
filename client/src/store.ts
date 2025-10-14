@@ -278,14 +278,14 @@ export const useApp = create<AppState>((set, get) => {
           plan: "free" as Plan,
         };
         set({
-          session: { role: "artist" },
+          session: { role: "artist", isNewUser: get().session.isNewUser },
           seller: foreign,
           viewingOwnerId: foreign.id,
         });
       } else {
         // используем профиль из LS
         set({
-          session: { role: "producer" },
+          session: { role: get().session.role, isNewUser: get().session.isNewUser },
           seller: get().me,
           viewingOwnerId: get().me.id,
         });

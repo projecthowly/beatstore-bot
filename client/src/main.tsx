@@ -32,7 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     defaultColorScheme="dark"
   >
     <Notifications position="top-right" />
-    <BrowserRouter basename="/beatstore-bot">
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </MantineProvider>

@@ -6,6 +6,8 @@ export function createBot(token: string, webappUrl: string) {
 
   // /start
   bot.start(async (ctx) => {
+    console.log(`🔔 /start получен от пользователя: ${ctx.from?.id} (${ctx.from?.username})`);
+
     const telegramId = ctx.from?.id;
     const username = ctx.from?.username || ctx.from?.first_name || "User";
     const name = ctx.from?.first_name || "дружище";
