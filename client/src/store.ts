@@ -248,9 +248,38 @@ export const useApp = create<AppState>((set, get) => {
   );
   audio.addEventListener("ended", () => set({ isPlaying: false }));
 
+  // Инициализация: загружаем биты и создаём пользователя если нужно
   (async () => {
     try {
       if (!get()._bootDone) await get().bootstrap();
+
+      // Если есть telegramId, проверяем/создаём пользователя в БД
+      if (telegramData.telegramId) {
+        try {
+          console.log("🔍 Проверяем пользователя в БД...", telegramData.telegramId);
+          const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
+
+          if (response.status === 404) {
+            // Пользователя нет - создаём
+            console.log("👋 Пользователь не найден, создаём в БД...");
+            const createResponse = await fetch(`${API_BASE}/api/users`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                telegram_id: telegramData.telegramId,
+                username: telegramData.username,
+                role: telegramData.role || "artist",
+              }),
+            });
+            const createData = await createResponse.json();
+            console.log("✅ Пользователь создан:", createData);
+          } else if (response.ok) {
+            console.log("✅ Пользователь уже существует в БД");
+          }
+        } catch (e) {
+          console.error("❌ Ошибка при проверке/создании пользователя:", e);
+        }
+      }
     } catch {}
   })();
 

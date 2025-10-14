@@ -21,17 +21,9 @@ export function createBot(token: string, webappUrl: string) {
       let user = await db.findUserByTelegramId(telegramId);
       let isNewUser = false;
 
-      // Если новый пользователь - создаём его СРАЗУ с временной ролью "artist"
       if (!user) {
-        console.log(`👋 Новый пользователь: ${username} (${telegramId}) - создаём в БД`);
-        user = await db.createUser({
-          telegram_id: telegramId,
-          username: username || null,
-          avatar_url: null,
-          role: "artist", // временная роль, изменится после выбора в модалке
-        });
+        console.log(`👋 Новый пользователь: ${username} (${telegramId}) - покажем модалку`);
         isNewUser = true;
-        console.log(`✅ Пользователь создан в БД с ID: ${user.id}`);
       } else {
         console.log(`🔙 Вернулся пользователь: ${username} (${telegramId}), роль: ${user.role}`);
       }
@@ -40,7 +32,7 @@ export function createBot(token: string, webappUrl: string) {
       const url = buildWebappUrl(webappUrl, {
         telegramId,
         username,
-        role: user.role, // реальная роль из БД
+        role: user?.role || "artist", // для новых - временная роль, для существующих - из БД
         isNewUser,
       });
 
@@ -72,19 +64,13 @@ export function createBot(token: string, webappUrl: string) {
       let isNewUser = false;
 
       if (!user) {
-        user = await db.createUser({
-          telegram_id: telegramId,
-          username: username || null,
-          avatar_url: null,
-          role: "artist",
-        });
         isNewUser = true;
       }
 
       const url = buildWebappUrl(webappUrl, {
         telegramId,
         username,
-        role: user.role,
+        role: user?.role || "artist",
         isNewUser,
       });
 
