@@ -248,7 +248,7 @@ export const useApp = create<AppState>((set, get) => {
   );
   audio.addEventListener("ended", () => set({ isPlaying: false }));
 
-  // Инициализация: загружаем биты и создаём пользователя если нужно
+  // Инициализация: загружаем биты и создаём/загружаем пользователя
   (async () => {
     try {
       if (!get()._bootDone) await get().bootstrap();
@@ -260,21 +260,39 @@ export const useApp = create<AppState>((set, get) => {
           const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
 
           if (response.status === 404) {
-            // Пользователя нет - создаём
-            console.log("👋 Пользователь не найден, создаём в БД...");
+            // Пользователя НЕТ в БД - создаём и показываем модалку
+            console.log("👋 Пользователь не найден в БД, создаём...");
             const createResponse = await fetch(`${API_BASE}/api/users`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 telegram_id: telegramData.telegramId,
                 username: telegramData.username,
-                role: telegramData.role || "artist",
+                role: "artist", // временная роль
               }),
             });
             const createData = await createResponse.json();
             console.log("✅ Пользователь создан:", createData);
+
+            // Устанавливаем сессию для нового пользователя - покажется модалка
+            const newUserSession: Session = { role: "artist", isNewUser: true };
+            set({ session: newUserSession });
+            saveSessionToLS(newUserSession);
+            console.log("🎭 Установлена сессия для нового пользователя:", newUserSession);
+
           } else if (response.ok) {
-            console.log("✅ Пользователь уже существует в БД");
+            // Пользователь СУЩЕСТВУЕТ - загружаем его роль из БД
+            const data = await response.json();
+            console.log("✅ Пользователь найден в БД:", data.user);
+            if (data.user) {
+              const existingUserSession: Session = {
+                role: data.user.role,
+                isNewUser: false, // не новый пользователь
+              };
+              set({ session: existingUserSession });
+              saveSessionToLS(existingUserSession);
+              console.log("🔄 Загружена сессия существующего пользователя:", existingUserSession);
+            }
           }
         } catch (e) {
           console.error("❌ Ошибка при проверке/создании пользователя:", e);
@@ -283,7 +301,7 @@ export const useApp = create<AppState>((set, get) => {
     } catch {}
   })();
 
-  // Загружаем сессию: приоритет у данных из Telegram, затем из БД, затем из LS
+  // Начальная сессия (будет обновлена асинхронно из БД в блоке выше)
   let initialSession: Session;
   if (telegramData.role) {
     // Данные пришли от бота через URL
@@ -293,36 +311,9 @@ export const useApp = create<AppState>((set, get) => {
     };
     console.log("✅ Сессия загружена из URL:", initialSession);
   } else {
-    // Фоллбэк: если есть telegramId, будем загружать из БД асинхронно
-    const savedSession = loadSessionFromLS();
-    initialSession = savedSession || { role: "artist", isNewUser: true };
-    console.log("📦 Сессия загружена из localStorage (временно):", initialSession);
-
-    // Если есть telegramId, асинхронно загрузим роль из БД
-    if (telegramData.telegramId) {
-      (async () => {
-        try {
-          console.log("🔄 Загружаем пользователя из БД...", telegramData.telegramId);
-          const response = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.user) {
-              const dbSession: Session = {
-                role: data.user.role,
-                isNewUser: false,
-              };
-              console.log("✅ Сессия загружена из БД:", dbSession);
-              set({ session: dbSession });
-              saveSessionToLS(dbSession);
-            }
-          } else {
-            console.log("ℹ️ Пользователь не найден в БД, используем localStorage");
-          }
-        } catch (e) {
-          console.error("❌ Ошибка при загрузке пользователя из БД:", e);
-        }
-      })();
-    }
+    // Временная сессия - будет обновлена из БД асинхронно (см. блок выше)
+    initialSession = { role: "artist", isNewUser: true };
+    console.log("⏳ Начальная сессия (будет обновлена из БД):", initialSession);
   }
 
   return {
