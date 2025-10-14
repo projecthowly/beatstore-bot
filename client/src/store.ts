@@ -21,6 +21,15 @@ function getTelegramDataFromUrl(): {
     const role = params.get("role");
     const isNew = params.get("isNew");
 
+    console.log("🔍 getTelegramDataFromUrl:", {
+      url: window.location.href,
+      tgId,
+      username,
+      role,
+      isNew,
+      parsedIsNew: isNew === "1",
+    });
+
     return {
       telegramId: tgId ? parseInt(tgId, 10) : null,
       username: username || null,
@@ -241,10 +250,12 @@ export const useApp = create<AppState>((set, get) => {
       role: telegramData.role,
       isNewUser: telegramData.isNewUser,
     };
+    console.log("✅ Сессия загружена из URL:", initialSession);
   } else {
     // Фоллбэк на localStorage
     const savedSession = loadSessionFromLS();
     initialSession = savedSession || { role: "producer", isNewUser: true };
+    console.log("📦 Сессия загружена из localStorage:", initialSession);
   }
 
   return {
