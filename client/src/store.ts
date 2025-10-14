@@ -589,33 +589,28 @@ export const useApp = create<AppState>((set, get) => {
       set({ session: newSession });
       saveSessionToLS(newSession);
 
-      // Отправляем на сервер, если есть telegramId
+      // Обновляем роль на сервере (пользователь уже создан ботом), если есть telegramId
       const telegramId = get().telegramId;
       if (telegramId) {
         try {
-          console.log("📤 Отправляем POST /api/users:", {
-            telegram_id: telegramId,
-            username: telegramData.username,
+          console.log("📤 Обновляем роль через PATCH /api/users/:telegramId/role:", {
+            telegramId,
             role,
           });
 
-          const response = await fetch(`${API_BASE}/api/users`, {
-            method: "POST",
+          const response = await fetch(`${API_BASE}/api/users/${telegramId}/role`, {
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              telegram_id: telegramId,
-              username: telegramData.username,
-              role,
-            }),
+            body: JSON.stringify({ role }),
           });
 
           const data = await response.json();
-          console.log("✅ Ответ от /api/users:", { status: response.status, data });
+          console.log("✅ Ответ от сервера:", { status: response.status, data });
         } catch (e) {
-          console.error("❌ Ошибка при создании пользователя:", e);
+          console.error("❌ Ошибка при обновлении роли:", e);
         }
       } else {
-        console.warn("⚠️ telegramId отсутствует, пользователь не сохранён в БД!");
+        console.warn("⚠️ telegramId отсутствует, роль не обновлена в БД!");
       }
     },
 
