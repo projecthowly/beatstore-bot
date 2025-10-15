@@ -696,18 +696,18 @@ function FileDropzoneRow({
 
   const leftIcon =
     icon === "cover" ? (
-      <IconPhoto size={16} />
+      <IconPhoto size={18} />
     ) : icon === "mp3" ? (
-      <IconMusic size={16} />
+      <IconMusic size={18} />
     ) : icon === "wav" ? (
-      <IconWaveSine size={16} />
+      <IconWaveSine size={18} />
     ) : icon === "stems" ? (
-      <IconStack2 size={16} />
+      <IconStack2 size={18} />
     ) : (
-      <IconMusic size={16} />
+      <IconMusic size={18} />
     );
 
-  const indicatorIcon = isOk ? <IconCheck size={16} /> : leftIcon;
+  const indicatorIcon = isOk ? <IconCheck size={18} /> : leftIcon;
 
   const indicatorStyles = isOk
     ? {
@@ -730,41 +730,39 @@ function FileDropzoneRow({
       };
 
   return (
-    <Group gap="md" wrap="nowrap" align="center">
-      {/* Индикатор */}
-      <ThemeIcon
-        radius="xl"
-        size={40}
-        variant="light"
-        style={{
-          ...indicatorStyles,
-          transition: "all 250ms ease",
-          flexShrink: 0,
-        }}
-      >
-        {indicatorIcon}
-      </ThemeIcon>
-
-      {/* Название */}
-      <Text
-        fw={500}
-        size="sm"
-        style={{
-          color: isOk ? "#fff" : isError ? "#ffb3b3" : "var(--text)",
-          fontFamily: FONT_FAMILY,
-          fontWeight: FONT_WEIGHT,
-          minWidth: rem(120),
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </Text>
+    <Stack gap="xs">
+      {/* Заголовок с индикатором */}
+      <Group gap="xs" wrap="nowrap" align="center">
+        <ThemeIcon
+          radius="xl"
+          size={36}
+          variant="light"
+          style={{
+            ...indicatorStyles,
+            transition: "all 250ms ease",
+            flexShrink: 0,
+          }}
+        >
+          {indicatorIcon}
+        </ThemeIcon>
+        <Text
+          fw={500}
+          size="sm"
+          style={{
+            color: isOk ? "#fff" : isError ? "#ffb3b3" : "var(--text)",
+            fontFamily: FONT_FAMILY,
+            fontWeight: FONT_WEIGHT,
+          }}
+        >
+          {label}
+        </Text>
+      </Group>
 
       {/* Dropzone или файл */}
       {file ? (
         <Box
           style={{
-            flex: 1,
+            width: "100%",
             border: "1px solid rgba(255,255,255,0.1)",
             background: "rgba(110,107,255,0.08)",
             borderRadius: rem(10),
@@ -819,18 +817,18 @@ function FileDropzoneRow({
           multiple={false}
           styles={{
             root: {
-              flex: 1,
+              width: "100%",
               background: "rgba(255,255,255,0.03)",
               border: isError
                 ? `2px dashed ${ERROR_BORDER}`
                 : "2px dashed rgba(110,107,255,0.3)",
               borderRadius: rem(10),
-              padding: `${rem(12)} ${rem(16)}`,
+              padding: rem(14),
               fontFamily: FONT_FAMILY,
               fontWeight: FONT_WEIGHT,
               transition: "all 250ms ease",
               cursor: "pointer",
-              minHeight: rem(48),
+              minHeight: rem(56),
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -849,12 +847,13 @@ function FileDropzoneRow({
             style={{
               fontFamily: FONT_FAMILY,
               fontWeight: FONT_WEIGHT,
+              fontSize: rem(13),
             }}
           >
-            Перетащите файл или нажмите для выбора
+            Нажмите для выбора файла
           </Text>
         </Dropzone>
       )}
-    </Group>
+    </Stack>
   );
 }
