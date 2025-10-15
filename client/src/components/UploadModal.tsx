@@ -11,13 +11,10 @@ import {
   NumberInput,
   Select,
   ThemeIcon,
-  Tooltip,
   rem,
 } from "@mantine/core";
 import { Dropzone, MIME_TYPES } from "@mantine/dropzone";
-import type { FileWithPath } from "@mantine/dropzone";
 import {
-  IconUpload,
   IconCheck,
   IconX,
   IconMusic,
@@ -684,7 +681,6 @@ function FileDropzoneRow({
   accept,
   onDrop,
   onRemove,
-  optional,
 }: {
   label: string;
   icon: "cover" | "mp3" | "wav" | "stems";
