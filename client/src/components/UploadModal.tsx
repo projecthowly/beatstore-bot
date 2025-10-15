@@ -21,13 +21,14 @@ import {
   IconWaveSine,
   IconStack2,
   IconPhoto,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { GlassCard, NeonButton } from "../ui/Glass";
 import { useApp } from "../store";
 import "../assets/fonts/unbounded.css";
 
 type Props = { opened: boolean; onClose: () => void };
-type IndicatorStatus = "idle" | "ok" | "error";
+type IndicatorStatus = "idle" | "ok" | "error" | "uploading";
 
 type UploadPrices = {
   [licenseId: string]: number | null;
@@ -82,6 +83,8 @@ export default function UploadModal({ opened, onClose }: Props) {
   const [titleErr, setTitleErr] = useState(false);
   const [bpmErr, setBpmErr] = useState(false);
   const [priceErrors, setPriceErrors] = useState<Record<string, boolean>>({});
+
+  const [isUploading, setIsUploading] = useState(false);
 
   // Инициализация цен из лицензий при открытии модального окна
   useEffect(() => {
@@ -261,6 +264,12 @@ export default function UploadModal({ opened, onClose }: Props) {
   const handleSubmit = async () => {
     console.log("🔵 handleSubmit вызван");
 
+    // Проверяем, что файлы не загружаются в данный момент
+    if (isUploading) {
+      console.log("⏳ Файлы уже загружаются, ждите...");
+      return;
+    }
+
     const { valid: step1Valid, bpmValue } = validateStep1();
     console.log("🔵 step1Valid:", step1Valid, "bpmValue:", bpmValue);
 
@@ -275,12 +284,25 @@ export default function UploadModal({ opened, onClose }: Props) {
         scale,
         bpmValue,
       });
+      // Возвращаемся на первый шаг если файлы не загружены
+      if (!step1Valid) {
+        setSlideDirection("right");
+        setTimeout(() => setStep(1), 0);
+      }
       return;
     }
 
     console.log("✅ Валидация прошла, начинаем загрузку");
 
     try {
+      setIsUploading(true);
+
+      // Устанавливаем статус "uploading" для каждого файла
+      setCoverStatus("uploading");
+      setMp3Status("uploading");
+      setWavStatus("uploading");
+      if (files.stems) setStemsStatus("uploading");
+
       await uploadBeat({
         title: title.trim(),
         key: scale,
@@ -288,10 +310,26 @@ export default function UploadModal({ opened, onClose }: Props) {
         prices: uploadPrices,
         files,
       });
+
       console.log("✅ Загрузка завершена успешно");
+
+      // Устанавливаем статус "ok" для всех файлов
+      setCoverStatus("ok");
+      setMp3Status("ok");
+      setWavStatus("ok");
+      if (files.stems) setStemsStatus("ok");
+
       onClose();
     } catch (error) {
       console.error("❌ Upload failed", error);
+
+      // Устанавливаем статус "error" для всех файлов при ошибке
+      setCoverStatus("error");
+      setMp3Status("error");
+      setWavStatus("error");
+      if (files.stems) setStemsStatus("error");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -715,13 +753,23 @@ export default function UploadModal({ opened, onClose }: Props) {
                 <NeonButton
                   onClick={handleSubmit}
                   size="md"
+                  disabled={isUploading}
                   style={{
                     fontSize: rem(15),
                     fontWeight: 600,
                     height: rem(44),
+                    opacity: isUploading ? 0.6 : 1,
+                    cursor: isUploading ? "not-allowed" : "pointer",
                   }}
                 >
-                  Опубликовать
+                  {isUploading ? (
+                    <Group gap="xs">
+                      <IconLoader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                      <span>Загрузка...</span>
+                    </Group>
+                  ) : (
+                    "Опубликовать"
+                  )}
                 </NeonButton>
               </Group>
             )}
@@ -753,6 +801,7 @@ function FileDropzoneRow({
 }) {
   const isOk = status === "ok";
   const isError = status === "error";
+  const isUploading = status === "uploading";
 
   const leftIcon =
     icon === "cover" ? (
@@ -767,7 +816,11 @@ function FileDropzoneRow({
       <IconMusic size={18} />
     );
 
-  const indicatorIcon = isOk ? <IconCheck size={18} /> : leftIcon;
+  const indicatorIcon = isOk
+    ? <IconCheck size={18} />
+    : isUploading
+    ? <IconLoader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+    : leftIcon;
 
   const indicatorStyles = isOk
     ? {
@@ -782,6 +835,13 @@ function FileDropzoneRow({
         boxShadow: ERROR_GLOW,
         color: "#ffb3b3",
         border: `1px solid ${ERROR_BORDER}`,
+      }
+    : isUploading
+    ? {
+        background: "rgba(110,107,255,0.15)",
+        boxShadow: "0 0 20px rgba(110,107,255,0.3)",
+        color: "#6E6BFF",
+        border: "1px solid rgba(110,107,255,0.4)",
       }
     : {
         background: "rgba(255,255,255,0.05)",
@@ -809,12 +869,12 @@ function FileDropzoneRow({
           fw={500}
           size="sm"
           style={{
-            color: isOk ? "#fff" : isError ? "#ffb3b3" : "var(--text)",
+            color: isOk ? "#fff" : isError ? "#ffb3b3" : isUploading ? "#6E6BFF" : "var(--text)",
             fontFamily: FONT_FAMILY,
             fontWeight: FONT_WEIGHT,
           }}
         >
-          {label}
+          {isUploading ? `${label} - Загрузка...` : label}
         </Text>
       </Group>
 
