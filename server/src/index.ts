@@ -406,6 +406,16 @@ app.post(
       const beatKey = String(req.body?.key   || "").trim() || "Am";
       const bpm     = Number(req.body?.bpm   || 0);
 
+      // Цены за лицензии (парсим JSON строку)
+      let prices = {};
+      try {
+        prices = typeof req.body?.prices === "string"
+          ? JSON.parse(req.body.prices)
+          : (req.body?.prices || {});
+      } catch (e) {
+        console.warn("⚠️ Не удалось распарсить prices:", e);
+      }
+
       // Автор приходит с клиента
       const authorId   = String(req.body?.authorId   || "").trim();
       const authorName = String(req.body?.authorName || "").trim();
@@ -466,7 +476,7 @@ app.post(
         bpm,
         coverUrl,
         files: { mp3: mp3Url, wav: wavUrl, stems: stemsUrl },
-        prices: { mp3: null, wav: null, stems: null },
+        prices: prices, // ✅ Сохраняем цены из запроса
 
         // сохраняем автора, если пришёл
         author: authorId || authorName ? {

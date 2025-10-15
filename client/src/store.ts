@@ -519,6 +519,10 @@ export const useApp = create<AppState>((set, get) => {
       fd.append("title", payload.title);
       fd.append("key", payload.key);
       fd.append("bpm", String(payload.bpm));
+
+      // ✅ Добавляем цены
+      fd.append("prices", JSON.stringify(payload.prices));
+
       if (payload.files.cover) fd.append("cover", payload.files.cover);
       if (payload.files.mp3) fd.append("mp3", payload.files.mp3);
       if (payload.files.wav) fd.append("wav", payload.files.wav);
