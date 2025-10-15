@@ -216,7 +216,7 @@ export default function UploadModal({ opened, onClose }: Props) {
     valid = valid && titleValid;
 
     const bpmValue = parseNumeric(bpm);
-    const bpmValid = bpmValue !== null && bpmValue >= 30 && bpmValue <= 240;
+    const bpmValid = bpmValue !== null && bpmValue > 0 && bpmValue <= 999;
     setBpmErr(!bpmValid);
     valid = valid && bpmValid;
 
