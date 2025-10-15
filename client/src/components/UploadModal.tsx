@@ -63,6 +63,7 @@ const INDICATOR_ERROR_BG = "rgba(255,107,107,0.12)";
 export default function UploadModal({ opened, onClose }: Props) {
   const { uploadBeat, licenses } = useApp();
 
+  const [step, setStep] = useState<1 | 2>(1); // ✅ Шаг 1: метаданные, Шаг 2: цены
   const [title, setTitle] = useState("");
   const [scale, setScale] = useState<string | null>(null); // ✅ Нет дефолтного значения
   const [bpm, setBpm] = useState<number | "">("");
@@ -88,6 +89,7 @@ export default function UploadModal({ opened, onClose }: Props) {
   useEffect(() => {
     if (!opened) return;
 
+    setStep(1); // ✅ Сбрасываем на первый шаг
     setTitle("");
     setScale(null); // ✅ Сбрасываем на null
     setBpm("");
@@ -251,7 +253,7 @@ export default function UploadModal({ opened, onClose }: Props) {
     },
   });
 
-  const validate = () => {
+  const validateStep1 = () => {
     let valid = true;
 
     if (!files.cover) {
@@ -276,7 +278,11 @@ export default function UploadModal({ opened, onClose }: Props) {
     setBpmErr(!bpmValid);
     valid = valid && bpmValid;
 
-    // Валидация цен для всех лицензий
+    return { valid, bpmValue };
+  };
+
+  const validateStep2 = () => {
+    let valid = true;
     const uploadPrices: UploadPrices = {};
     const newPriceErrors: Record<string, boolean> = {};
 
@@ -294,12 +300,21 @@ export default function UploadModal({ opened, onClose }: Props) {
 
     setPriceErrors(newPriceErrors);
 
-    return { valid, bpmValue, prices: uploadPrices };
+    return { valid, prices: uploadPrices };
+  };
+
+  const handleNextStep = () => {
+    const { valid } = validateStep1();
+    if (valid && scale) {
+      setStep(2);
+    }
   };
 
   const handleSubmit = async () => {
-    const { valid, bpmValue, prices: uploadPrices } = validate();
-    if (!valid || !scale || bpmValue === null) {
+    const { valid: step1Valid, bpmValue } = validateStep1();
+    const { valid: step2Valid, prices: uploadPrices } = validateStep2();
+
+    if (!step1Valid || !step2Valid || !scale || bpmValue === null) {
       return;
     }
 
@@ -405,7 +420,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                     fontSize: rem(22),
                   }}
                 >
-                  Загрузить новый бит
+                  {step === 1 ? "Загрузить новый бит" : "Укажите цены"}
                 </Text>
                 <Text
                   size="sm"
@@ -415,7 +430,9 @@ export default function UploadModal({ opened, onClose }: Props) {
                     fontWeight: FONT_WEIGHT,
                   }}
                 >
-                  Добавьте обложку, аудио-файлы и цены для вашего трека
+                  {step === 1
+                    ? "Добавьте обложку, аудио-файлы и метаданные"
+                    : "Установите цены для каждой лицензии"}
                 </Text>
               </Stack>
               <Button
@@ -437,9 +454,10 @@ export default function UploadModal({ opened, onClose }: Props) {
               </Button>
             </Group>
 
-            <Box style={sectionSurface}>
-              <Stack gap="sm">
-                <Dropzone
+            {step === 1 && (
+              <Box style={sectionSurface}>
+                <Stack gap="sm">
+                  <Dropzone
                   onDrop={onDrop}
                   multiple
                   maxSize={500 * 1024 * 1024}
@@ -573,21 +591,23 @@ export default function UploadModal({ opened, onClose }: Props) {
                 </Stack>
               </Stack>
             </Box>
+            )}
 
-            <Box style={sectionSurface}>
-              <Stack gap="sm">
-                <TextInput
-                  size="sm"
-                  label="Название *"
-                  placeholder="Введите название трека"
-                  value={title}
-                  onChange={(event) => setTitle(event.currentTarget.value)}
-                  error={titleErr ? " " : undefined}
-                  withErrorStyles={false}
-                  styles={getControlStyles(titleErr)}
-                />
+            {step === 1 && (
+              <Box style={sectionSurface}>
+                <Stack gap="sm">
+                  <TextInput
+                    size="sm"
+                    label="Название *"
+                    placeholder="Введите название трека"
+                    value={title}
+                    onChange={(event) => setTitle(event.currentTarget.value)}
+                    error={titleErr ? " " : undefined}
+                    withErrorStyles={false}
+                    styles={getControlStyles(titleErr)}
+                  />
 
-                <Group grow gap="sm">
+                  <Group grow gap="sm">
                   <Select
                     size="sm"
                     label="Тональность *"
@@ -691,55 +711,92 @@ export default function UploadModal({ opened, onClose }: Props) {
                     styles={getControlStyles(bpmErr)}
                   />
                 </Group>
-
-                <Group grow gap="sm">
-                  {licenses.map((license) => (
-                    <NumberInput
-                      key={license.id}
-                      size="sm"
-                      label={`Цена ${license.name} *`}
-                      value={prices[license.id] ?? ""}
-                      onChange={(value) =>
-                        setPrices((prev) => ({
-                          ...prev,
-                          [license.id]: value === "" ? "" : Number(value),
-                        }))
-                      }
-                      min={0}
-                      hideControls
-                      leftSection={
-                        <Text
-                          size="xs"
-                          fw={600}
-                          style={{
-                            color: "var(--muted)",
-                            paddingLeft: rem(4),
-                          }}
-                        >
-                          $
-                        </Text>
-                      }
-                      error={priceErrors[license.id] ? " " : undefined}
-                      withErrorStyles={false}
-                      styles={getControlStyles(priceErrors[license.id] || false)}
-                    />
-                  ))}
-                </Group>
               </Stack>
             </Box>
+            )}
 
-            <NeonButton
-              onClick={handleSubmit}
-              size="md"
-              style={{
-                width: "100%",
-                fontSize: rem(15),
-                fontWeight: 600,
-                height: rem(44),
-              }}
-            >
-              Опубликовать
-            </NeonButton>
+            {step === 1 && (
+              <NeonButton
+                onClick={handleNextStep}
+                size="md"
+                style={{
+                  width: "100%",
+                  fontSize: rem(15),
+                  fontWeight: 600,
+                  height: rem(44),
+                }}
+              >
+                Далее
+              </NeonButton>
+            )}
+
+            {step === 2 && (
+              <Box style={sectionSurface}>
+                <Stack gap="sm">
+                  <Group grow gap="sm">
+                    {licenses.map((license) => (
+                      <NumberInput
+                        key={license.id}
+                        size="sm"
+                        label={`${license.name} *`}
+                        value={prices[license.id] ?? ""}
+                        onChange={(value) =>
+                          setPrices((prev) => ({
+                            ...prev,
+                            [license.id]: value === "" ? "" : Number(value),
+                          }))
+                        }
+                        min={0}
+                        hideControls
+                        leftSection={
+                          <Text
+                            size="xs"
+                            fw={600}
+                            style={{
+                              color: "var(--muted)",
+                              paddingLeft: rem(4),
+                            }}
+                          >
+                            $
+                          </Text>
+                        }
+                        error={priceErrors[license.id] ? " " : undefined}
+                        withErrorStyles={false}
+                        styles={getControlStyles(priceErrors[license.id] || false)}
+                      />
+                    ))}
+                  </Group>
+                </Stack>
+              </Box>
+            )}
+
+            {step === 2 && (
+              <Group gap="sm" grow>
+                <Button
+                  onClick={() => setStep(1)}
+                  size="md"
+                  variant="light"
+                  style={{
+                    fontSize: rem(15),
+                    fontWeight: 600,
+                    height: rem(44),
+                  }}
+                >
+                  Назад
+                </Button>
+                <NeonButton
+                  onClick={handleSubmit}
+                  size="md"
+                  style={{
+                    fontSize: rem(15),
+                    fontWeight: 600,
+                    height: rem(44),
+                  }}
+                >
+                  Опубликовать
+                </NeonButton>
+              </Group>
+            )}
           </Stack>
         </ScrollArea>
       </GlassCard>

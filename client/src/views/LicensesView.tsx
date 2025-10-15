@@ -47,7 +47,7 @@ export default function LicensesView() {
 
     try {
       await Promise.all(updatePromises);
-      alert(`Цена ${license.name} (${license.defaultPrice}₽) применена ко всем битам в БД!`);
+      alert(`Цена ${license.name} ($${license.defaultPrice}) применена ко всем битам в БД!`);
     } catch (error) {
       alert("Ошибка при обновлении цен в БД. Проверьте консоль.");
       console.error(error);
@@ -218,7 +218,7 @@ export default function LicensesView() {
                     hideControls
                     leftSection={
                       <Text size="xs" fw={600} c="var(--muted)" pl={4}>
-                        ₽
+                        $
                       </Text>
                     }
                     styles={{
@@ -306,7 +306,7 @@ export default function LicensesView() {
             hideControls
             leftSection={
               <Text size="xs" fw={600} c="var(--muted)" pl={4}>
-                ₽
+                $
               </Text>
             }
           />
