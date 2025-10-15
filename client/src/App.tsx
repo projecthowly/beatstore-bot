@@ -7,7 +7,6 @@ import TopBar from "./components/TopBar";
 import BottomTabs from "./components/BottomTabs";
 
 import CatalogView from "./views/CatalogView";
-import BeatPage from "./views/BeatPage";
 import CartPage from "./views/CartPage";
 import AccountView from "./views/AccountView";
 import AnalyticsView from "./views/AnalyticsView";
@@ -82,7 +81,6 @@ export default function App() {
           >
             <Routes>
               <Route path="/" element={<CatalogView />} />
-              <Route path="/beat/:id" element={<BeatPage />} />
               <Route path="/cart" element={<CartPage />} />
               <Route path="/account" element={<AccountView />} />
               <Route path="/analytics" element={<AnalyticsView />} />

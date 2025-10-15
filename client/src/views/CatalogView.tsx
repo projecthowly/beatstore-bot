@@ -3,7 +3,6 @@ import { IconPlus, IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
 import { GlassCard, NeonButton } from "../ui/Glass";
 import { useApp } from "../store";
 import type { Beat, LicenseType } from "../types";
-import { useNavigate } from "react-router-dom";
 import { useState, useRef } from "react";
 import UploadModal from "../components/UploadModal";
 import PlayerCard from "../components/PlayerCard";
@@ -56,7 +55,6 @@ export default function CatalogView() {
 
 function BeatRow({ beat }: { beat: Beat }) {
   const { togglePlay, playingBeatId, isPlaying } = useApp();
-  const nav = useNavigate();
   const [modalOpened, setModalOpened] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -79,8 +77,7 @@ function BeatRow({ beat }: { beat: Beat }) {
   return (
     <GlassCard
       p="12px"
-      onClick={() => nav(`/beat/${beat.id}`)}
-      style={{ cursor: "pointer" }}
+      style={{ cursor: "default" }}
     >
       <Group justify="space-between" wrap="nowrap">
         <Group gap="10px" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
