@@ -578,29 +578,47 @@ export default function UploadModal({ opened, onClose }: Props) {
                       },
                     }}
                   />
-                  <NumberInput
+                  <TextInput
                     size="sm"
                     label="BPM *"
                     value={bpm}
-                    onChange={(value) => {
+                    onChange={(event) => {
+                      const input = event.currentTarget.value;
+
+                      // Разрешаем только цифры и запятую
+                      const filtered = input.replace(/[^\d,]/g, "");
+
+                      // Разрешаем только одну запятую
+                      const parts = filtered.split(",");
+                      if (parts.length > 2) return; // Больше одной запятой - игнорируем
+
+                      const integerPart = parts[0] || "";
+                      const decimalPart = parts[1];
+
+                      // Проверяем что целая часть не больше 3 цифр
+                      if (integerPart.length > 3) return; // Игнорируем ввод
+
+                      // Собираем обратно значение
+                      let value = integerPart;
+                      if (parts.length === 2) {
+                        value += "," + (decimalPart || "");
+                      }
+
+                      // Если строка пустая, ставим ""
                       if (value === "") {
                         setBpm("");
                       } else {
-                        const strValue = String(value);
-                        // Строго ограничиваем до 3 цифр
-                        if (strValue.length <= 3) {
-                          const num = Number(strValue);
-                          if (num >= 0 && num <= 999) {
-                            setBpm(num);
-                          }
+                        // Для хранения конвертируем запятую в точку
+                        const numValue = parseFloat(value.replace(",", "."));
+                        if (!isNaN(numValue) && numValue <= 999) {
+                          setBpm(numValue);
+                        } else if (value.endsWith(",")) {
+                          // Разрешаем вводить запятую
+                          setBpm(value as any);
                         }
                       }
                     }}
-                    min={0}
-                    max={999}
-                    allowDecimal={false}
-                    allowNegative={false}
-                    hideControls
+                    inputMode="decimal"
                     error={bpmErr ? " " : undefined}
                     withErrorStyles={false}
                     styles={getControlStyles(bpmErr)}
