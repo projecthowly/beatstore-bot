@@ -299,13 +299,16 @@ export default function UploadModal({ opened, onClose }: Props) {
           boxShadow: "none",
           padding: rem(0),
           width: "min(820px, 98vw)",
+          maxWidth: "98vw",
           maxHeight: "90vh",
           display: "flex",
+          overflow: "hidden",
         },
         body: {
           padding: 0,
           display: "flex",
           flex: 1,
+          overflow: "hidden",
         },
       }}
     >
@@ -315,6 +318,7 @@ export default function UploadModal({ opened, onClose }: Props) {
           color: "#fff",
           padding: 0,
           width: "100%",
+          maxWidth: "100%",
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
@@ -325,7 +329,7 @@ export default function UploadModal({ opened, onClose }: Props) {
         }}
       >
         <ScrollArea
-          style={{ flex: 1, minHeight: rem(500) }}
+          style={{ flex: 1, minHeight: rem(500), maxWidth: "100%" }}
           type="auto"
           scrollbarSize={6}
           offsetScrollbars
@@ -333,6 +337,7 @@ export default function UploadModal({ opened, onClose }: Props) {
             viewport: {
               padding: `${rem(26)} ${rem(24)} ${rem(24)}`,
               boxSizing: "border-box",
+              maxWidth: "100%",
             },
             scrollbar: {
               background: "transparent",
@@ -363,9 +368,11 @@ export default function UploadModal({ opened, onClose }: Props) {
                 slideDirection === "left"
                   ? "slideInFromRight 300ms cubic-bezier(0.4, 0, 0.2, 1)"
                   : "slideInFromLeft 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+              maxWidth: "100%",
+              overflow: "hidden",
             }}
           >
-            <Stack gap="lg">
+            <Stack gap="lg" style={{ maxWidth: "100%" }}>
             <Group justify="space-between" align="flex-start">
               <Stack gap={4}>
                 <Text

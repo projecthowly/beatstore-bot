@@ -249,6 +249,82 @@ app.get("/api/users/:telegramId/subscription", async (req, res) => {
 });
 
 /**
+ * GET /api/users/:telegramId/licenses
+ * Получить настройки лицензий пользователя
+ */
+app.get("/api/users/:telegramId/licenses", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    const result = await db.query(
+      "SELECT license_key, license_name, default_price FROM user_license_settings WHERE user_id = $1",
+      [user.id]
+    );
+
+    const licenses = result.rows.map((row: any) => ({
+      id: row.license_key,
+      name: row.license_name,
+      defaultPrice: row.default_price ? parseFloat(row.default_price) : null,
+    }));
+
+    res.json({ ok: true, licenses });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId/licenses error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * PATCH /api/users/:telegramId/licenses
+ * Обновить настройки лицензий пользователя
+ */
+app.patch("/api/users/:telegramId/licenses", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { licenses } = req.body;
+    if (!Array.isArray(licenses)) {
+      return res.status(400).json({ ok: false, error: "invalid-licenses" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Удаляем старые настройки
+    await db.query("DELETE FROM user_license_settings WHERE user_id = $1", [user.id]);
+
+    // Вставляем новые
+    for (const lic of licenses) {
+      await db.query(
+        `INSERT INTO user_license_settings (user_id, license_key, license_name, default_price)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, license_key)
+         DO UPDATE SET license_name = $3, default_price = $4, updated_at = CURRENT_TIMESTAMP`,
+        [user.id, lic.id, lic.name, lic.defaultPrice]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /api/users/:telegramId/licenses error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
  * GET /api/users/:telegramId/purchases
  * Получить историю покупок пользователя
  */
