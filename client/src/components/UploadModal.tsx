@@ -800,20 +800,24 @@ function FileDropzoneRow({
               alignItems: "center",
             }}
           >
-            <Group justify="space-between" wrap="nowrap" style={{ width: "100%" }}>
-              <Text
-                fz="sm"
-                fw={500}
-                c="var(--text)"
-                style={{
-                  fontFamily: FONT_FAMILY,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {file.name}
-              </Text>
+            <Group justify="space-between" wrap="nowrap" gap="xs" style={{ width: "100%", minWidth: 0 }}>
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  fz="sm"
+                  fw={500}
+                  c="var(--text)"
+                  style={{
+                    fontFamily: FONT_FAMILY,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    display: "block",
+                    maxWidth: "100%",
+                  }}
+                >
+                  {file.name}
+                </Text>
+              </Box>
               <Button
                 size="compact-xs"
                 variant="subtle"
