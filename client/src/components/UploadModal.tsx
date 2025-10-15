@@ -61,6 +61,7 @@ export default function UploadModal({ opened, onClose }: Props) {
   const { uploadBeat, licenses } = useApp();
 
   const [step, setStep] = useState<1 | 2>(1); // ✅ Шаг 1: метаданные, Шаг 2: цены
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">("left");
   const [title, setTitle] = useState("");
   const [scale, setScale] = useState<string | null>(null); // ✅ Нет дефолтного значения
   const [bpm, setBpm] = useState<number | "">("");
@@ -247,8 +248,14 @@ export default function UploadModal({ opened, onClose }: Props) {
   const handleNextStep = () => {
     const { valid } = validateStep1();
     if (valid && scale) {
-      setStep(2);
+      setSlideDirection("left");
+      setTimeout(() => setStep(2), 0);
     }
+  };
+
+  const handleBackStep = () => {
+    setSlideDirection("right");
+    setTimeout(() => setStep(1), 0);
   };
 
   const handleSubmit = async () => {
@@ -318,7 +325,7 @@ export default function UploadModal({ opened, onClose }: Props) {
         }}
       >
         <ScrollArea
-          style={{ flex: 1 }}
+          style={{ flex: 1, minHeight: rem(500) }}
           type="auto"
           scrollbarSize={6}
           offsetScrollbars
@@ -349,7 +356,16 @@ export default function UploadModal({ opened, onClose }: Props) {
             corner: { display: "none" },
           }}
         >
-          <Stack gap="lg">
+          <Box
+            key={step}
+            style={{
+              animation:
+                slideDirection === "left"
+                  ? "slideInFromRight 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+                  : "slideInFromLeft 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+          >
+            <Stack gap="lg">
             <Group justify="space-between" align="flex-start">
               <Stack gap={4}>
                 <Text
@@ -559,21 +575,22 @@ export default function UploadModal({ opened, onClose }: Props) {
                   <NumberInput
                     size="sm"
                     label="BPM *"
+                    placeholder="30-999"
                     value={bpm}
-                    min={30}
-                    max={999}
-                    clampBehavior="strict"
                     onChange={(value) => {
-                      // ✅ Ограничение до 3 цифр (максимум 999)
                       if (value === "") {
                         setBpm("");
                       } else {
                         const num = Number(value);
-                        if (num <= 999) {
+                        if (num >= 0 && num <= 999) {
                           setBpm(num);
                         }
                       }
                     }}
+                    min={0}
+                    max={999}
+                    allowDecimal={false}
+                    allowNegative={false}
                     hideControls
                     error={bpmErr ? " " : undefined}
                     withErrorStyles={false}
@@ -642,7 +659,7 @@ export default function UploadModal({ opened, onClose }: Props) {
             {step === 2 && (
               <Group gap="sm" grow>
                 <Button
-                  onClick={() => setStep(1)}
+                  onClick={handleBackStep}
                   size="md"
                   variant="light"
                   style={{
@@ -666,7 +683,8 @@ export default function UploadModal({ opened, onClose }: Props) {
                 </NeonButton>
               </Group>
             )}
-          </Stack>
+            </Stack>
+          </Box>
         </ScrollArea>
       </GlassCard>
     </Modal>
@@ -806,53 +824,60 @@ function FileDropzoneRow({
           </Group>
         </Box>
       ) : (
-        <Dropzone
-          onDrop={(files) => {
-            if (files.length > 0) {
-              onDrop(files[0]);
-            }
-          }}
-          maxSize={500 * 1024 * 1024}
-          accept={accept}
-          multiple={false}
-          styles={{
-            root: {
-              width: "100%",
-              background: "rgba(255,255,255,0.03)",
-              border: isError
-                ? `2px dashed ${ERROR_BORDER}`
-                : "2px dashed rgba(110,107,255,0.3)",
-              borderRadius: rem(10),
-              padding: rem(14),
-              fontFamily: FONT_FAMILY,
-              fontWeight: FONT_WEIGHT,
-              transition: "all 250ms ease",
-              cursor: "pointer",
-              minHeight: rem(56),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              "&:hover": {
-                background: "rgba(110,107,255,0.05)",
-                borderColor: "rgba(110,107,255,0.5)",
-                boxShadow: "0 0 20px rgba(110,107,255,0.15)",
-              },
-            },
+        <Box
+          style={{
+            width: "100%",
+            minHeight: rem(56),
           }}
         >
-          <Text
-            size="sm"
-            c="var(--muted)"
-            ta="center"
-            style={{
-              fontFamily: FONT_FAMILY,
-              fontWeight: FONT_WEIGHT,
-              fontSize: rem(13),
+          <Dropzone
+            onDrop={(files) => {
+              if (files.length > 0) {
+                onDrop(files[0]);
+              }
+            }}
+            maxSize={500 * 1024 * 1024}
+            accept={accept}
+            multiple={false}
+            styles={{
+              root: {
+                width: "100%",
+                background: "rgba(255,255,255,0.03)",
+                border: isError
+                  ? `2px dashed ${ERROR_BORDER}`
+                  : "2px dashed rgba(110,107,255,0.3)",
+                borderRadius: rem(10),
+                padding: rem(14),
+                fontFamily: FONT_FAMILY,
+                fontWeight: FONT_WEIGHT,
+                transition: "all 250ms ease",
+                cursor: "pointer",
+                minHeight: rem(56),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                "&:hover": {
+                  background: "rgba(110,107,255,0.05)",
+                  borderColor: "rgba(110,107,255,0.5)",
+                  boxShadow: "0 0 20px rgba(110,107,255,0.15)",
+                },
+              },
             }}
           >
-            Нажмите для выбора файла
-          </Text>
-        </Dropzone>
+            <Text
+              size="sm"
+              c="var(--muted)"
+              ta="center"
+              style={{
+                fontFamily: FONT_FAMILY,
+                fontWeight: FONT_WEIGHT,
+                fontSize: rem(13),
+              }}
+            >
+              Нажмите для выбора файла
+            </Text>
+          </Dropzone>
+        </Box>
       )}
     </Stack>
   );

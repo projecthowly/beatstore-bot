@@ -180,6 +180,30 @@ textarea:-ms-input-placeholder {
   }
 }
 
+/* Анимация перелистывания слева направо */
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Анимация перелистывания справа налево */
+@keyframes slideInFromLeft {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 /* адаптивность для мобильных устройств */
 
 /* Маленькие телефоны (до 360px) */
