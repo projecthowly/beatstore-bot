@@ -115,62 +115,6 @@ export default function UploadModal({ opened, onClose }: Props) {
     setFiles((prev) => ({ ...prev, [key]: value }));
   };
 
-  const onDrop = (dropped: FileWithPath[]) => {
-    let coverLoaded = false;
-    let mp3Loaded = false;
-    let wavLoaded = false;
-    let stemsLoaded = false;
-
-    setFiles((prev) => {
-      const next = { ...prev };
-
-      dropped.forEach((file) => {
-        const name = file.name.toLowerCase();
-        const type = file.type;
-
-        if (!next.cover && type.startsWith("image/")) {
-          next.cover = file;
-          coverLoaded = true;
-          return;
-        }
-
-        if (!next.mp3 && (type === "audio/mpeg" || name.endsWith(".mp3"))) {
-          next.mp3 = file;
-          mp3Loaded = true;
-          return;
-        }
-
-        if (
-          !next.wav &&
-          (type === "audio/wav" ||
-            type === "audio/x-wav" ||
-            name.endsWith(".wav"))
-        ) {
-          next.wav = file;
-          wavLoaded = true;
-          return;
-        }
-
-        if (
-          !next.stems &&
-          (name.includes("stem") ||
-            name.endsWith(".zip") ||
-            type === "application/zip")
-        ) {
-          next.stems = file;
-          stemsLoaded = true;
-        }
-      });
-
-      return next;
-    });
-
-    if (coverLoaded) setCoverStatus("ok");
-    if (mp3Loaded) setMp3Status("ok");
-    if (wavLoaded) setWavStatus("ok");
-    if (stemsLoaded) setStemsStatus("ok");
-  };
-
   const removeFile = (key: keyof UploadFiles) => {
     setFile(key, null);
     switch (key) {
@@ -457,140 +401,68 @@ export default function UploadModal({ opened, onClose }: Props) {
             {step === 1 && (
               <Box style={sectionSurface}>
                 <Stack gap="sm">
-                  <Dropzone
-                  onDrop={onDrop}
-                  multiple
-                  maxSize={500 * 1024 * 1024}
-                  accept={{
-                    [MIME_TYPES.png]: [".png"],
-                    [MIME_TYPES.jpeg]: [".jpg", ".jpeg"],
-                    [MIME_TYPES.webp]: [".webp"],
-                    "audio/mpeg": [".mp3"],
-                    "audio/wav": [".wav"],
-                    "application/zip": [".zip"],
-                  }}
-                  styles={{
-                    root: {
-                      background: "rgba(255,255,255,0.03)",
-                      border: "2px dashed rgba(110,107,255,0.3)",
-                      borderRadius: rem(12),
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: `${rem(24)} ${rem(16)}`,
-                      fontFamily: FONT_FAMILY,
-                      fontWeight: FONT_WEIGHT,
-                      transition: "all 250ms ease",
-                      cursor: "pointer",
-                      "&:hover": {
-                        background: "rgba(110,107,255,0.05)",
-                        borderColor: "rgba(110,107,255,0.5)",
-                        boxShadow: "0 0 20px rgba(110,107,255,0.15)",
-                      },
-                    },
-                  }}
-                >
-                  <Stack gap={8} align="center">
-                    <ThemeIcon
-                      size={48}
-                      radius="xl"
-                      style={{
-                        background: ACCENT_GRADIENT,
-                        boxShadow: ACCENT_GLOW,
-                        border: "none",
-                      }}
-                    >
-                      <IconUpload size={22} />
-                    </ThemeIcon>
-                    <Text
-                      size="sm"
-                      c="var(--text)"
-                      ta="center"
-                      fw={500}
-                      style={{
-                        fontFamily: FONT_FAMILY,
-                        fontWeight: FONT_WEIGHT,
-                      }}
-                    >
-                      Перетащите файлы сюда или
-                      <Text
-                        span
-                        fw={600}
-                        style={{
-                          background: ACCENT_GRADIENT,
-                          WebkitBackgroundClip: "text",
-                          WebkitTextFillColor: "transparent",
-                          backgroundClip: "text",
-                        }}
-                      >
-                        &nbsp;выберите
-                      </Text>
-                    </Text>
-                    <Text
-                      size="xs"
-                      c="var(--muted)"
-                      ta="center"
-                      style={{
-                        fontFamily: FONT_FAMILY,
-                        fontWeight: FONT_WEIGHT,
-                        fontSize: "12px",
-                      }}
-                    >
-                      PNG, JPG, WEBP, MP3, WAV, ZIP • До 500 MB на файл
-                    </Text>
-                  </Stack>
-                </Dropzone>
-
-                <Box
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                    gap: rem(8),
-                    width: "100%",
-                  }}
-                >
-                  <Indicator label="Artwork *" status={coverStatus} />
-                  <Indicator label="MP3 *" status={mp3Status} />
-                  <Indicator label="WAV *" status={wavStatus} />
-                  <Indicator
-                    label="STEMS (optional)"
-                    status={stemsStatus}
-                    optional
-                  />
-                </Box>
-
-                <Stack gap={6}>
-                  <UploadedRow
-                    label="Artwork"
+                  <FileDropzoneRow
+                    label="Artwork *"
                     icon="cover"
                     file={files.cover}
                     status={coverStatus}
+                    accept={{
+                      [MIME_TYPES.png]: [".png"],
+                      [MIME_TYPES.jpeg]: [".jpg", ".jpeg"],
+                      [MIME_TYPES.webp]: [".webp"],
+                    }}
+                    onDrop={(file) => {
+                      setFile("cover", file);
+                      setCoverStatus("ok");
+                    }}
                     onRemove={() => removeFile("cover")}
                   />
-                  <UploadedRow
-                    label="MP3"
+                  <FileDropzoneRow
+                    label="MP3 *"
                     icon="mp3"
                     file={files.mp3}
                     status={mp3Status}
+                    accept={{
+                      "audio/mpeg": [".mp3"],
+                    }}
+                    onDrop={(file) => {
+                      setFile("mp3", file);
+                      setMp3Status("ok");
+                    }}
                     onRemove={() => removeFile("mp3")}
                   />
-                  <UploadedRow
-                    label="WAV"
+                  <FileDropzoneRow
+                    label="WAV *"
                     icon="wav"
                     file={files.wav}
                     status={wavStatus}
+                    accept={{
+                      "audio/wav": [".wav"],
+                      "audio/x-wav": [".wav"],
+                    }}
+                    onDrop={(file) => {
+                      setFile("wav", file);
+                      setWavStatus("ok");
+                    }}
                     onRemove={() => removeFile("wav")}
                   />
-                  <UploadedRow
-                    label="STEMS"
+                  <FileDropzoneRow
+                    label="STEMS (optional)"
                     icon="stems"
                     file={files.stems}
                     status={stemsStatus}
+                    accept={{
+                      "application/zip": [".zip"],
+                    }}
+                    onDrop={(file) => {
+                      setFile("stems", file);
+                      setStemsStatus("ok");
+                    }}
                     onRemove={() => removeFile("stems")}
+                    optional
                   />
                 </Stack>
-              </Stack>
-            </Box>
+              </Box>
             )}
 
             {step === 1 && (
@@ -804,115 +676,27 @@ export default function UploadModal({ opened, onClose }: Props) {
   );
 }
 
-function Indicator({
+function FileDropzoneRow({
   label,
+  icon,
+  file,
   status,
+  accept,
+  onDrop,
+  onRemove,
   optional,
 }: {
   label: string;
+  icon: "cover" | "mp3" | "wav" | "stems";
+  file: File | null;
   status: IndicatorStatus;
+  accept: Record<string, string[]>;
+  onDrop: (file: File) => void;
+  onRemove: () => void;
   optional?: boolean;
 }) {
   const isOk = status === "ok";
   const isError = status === "error";
-
-  const icon = isOk ? <IconCheck size={16} /> : null;
-
-  const indicatorStyles = isOk
-    ? {
-      background: ACCENT_GRADIENT,
-      boxShadow: ACCENT_GLOW,
-      color: "#fff",
-      border: "none",
-    }
-    : isError
-      ? {
-        background: INDICATOR_ERROR_BG,
-        boxShadow: ERROR_GLOW,
-        color: "#ffb3b3",
-        border: `1px solid ${ERROR_BORDER}`,
-      }
-      : {
-        background: "rgba(255,255,255,0.05)",
-        color: "var(--muted)",
-        border: "1px solid rgba(255,255,255,0.1)",
-      };
-
-  return (
-    <Tooltip
-      label={
-        optional
-          ? "Опциональный файл"
-          : isError
-            ? "Добавьте этот файл"
-            : undefined
-      }
-      disabled={!isError && !optional}
-      withArrow
-      offset={6}
-      styles={{
-        tooltip: {
-          background: "rgba(20,20,20,0.95)",
-          backdropFilter: "blur(10px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          fontSize: rem(12),
-        },
-      }}
-    >
-      <Stack
-        gap={6}
-        align="center"
-        justify="center"
-        style={{
-          width: "100%",
-          textAlign: "center",
-          fontFamily: FONT_FAMILY,
-          fontWeight: FONT_WEIGHT,
-        }}
-      >
-        <ThemeIcon
-          radius="xl"
-          size={32}
-          variant="light"
-          color={isOk || isError ? "blue" : "gray"}
-          style={{
-            ...indicatorStyles,
-            transition: "all 250ms ease",
-          }}
-        >
-          {icon}
-        </ThemeIcon>
-        <Text
-          fz="xs"
-          fw={500}
-          style={{
-            color: isOk ? "#fff" : isError ? "#ffb3b3" : "var(--muted)",
-            fontFamily: FONT_FAMILY,
-            fontWeight: FONT_WEIGHT,
-            transition: "color 250ms ease",
-          }}
-        >
-          {label}
-        </Text>
-      </Stack>
-    </Tooltip>
-  );
-}
-
-function UploadedRow({
-  label,
-  file,
-  status,
-  icon,
-  onRemove,
-}: {
-  label: string;
-  file: File | null;
-  status?: IndicatorStatus;
-  icon?: "cover" | "mp3" | "wav" | "stems";
-  onRemove: () => void;
-}) {
-  if (!file) return null;
 
   const leftIcon =
     icon === "cover" ? (
@@ -927,92 +711,154 @@ function UploadedRow({
       <IconMusic size={16} />
     );
 
-  return (
-    <Box
-      style={{
+  const indicatorIcon = isOk ? <IconCheck size={16} /> : leftIcon;
+
+  const indicatorStyles = isOk
+    ? {
+        background: ACCENT_GRADIENT,
+        boxShadow: ACCENT_GLOW,
+        color: "#fff",
+        border: "none",
+      }
+    : isError
+    ? {
+        background: INDICATOR_ERROR_BG,
+        boxShadow: ERROR_GLOW,
+        color: "#ffb3b3",
+        border: `1px solid ${ERROR_BORDER}`,
+      }
+    : {
+        background: "rgba(255,255,255,0.05)",
+        color: "var(--muted)",
         border: "1px solid rgba(255,255,255,0.1)",
-        background:
-          status === "ok"
-            ? "rgba(110,107,255,0.08)"
-            : "rgba(255,255,255,0.04)",
-        borderRadius: rem(10),
-        padding: rem(12),
-        fontFamily: FONT_FAMILY,
-        transition: "all 250ms ease",
-      }}
-    >
-      <Group justify="space-between" wrap="nowrap">
-        <Group gap={10}>
-          <ThemeIcon
-            variant="light"
-            color={status === "ok" ? "blue" : "gray"}
-            size={36}
-            radius="md"
-            style={{
-              background:
-                status === "ok"
-                  ? ACCENT_GRADIENT
-                  : status === "error"
-                    ? INDICATOR_ERROR_BG
-                    : "rgba(255,255,255,0.06)",
-              border:
-                status === "error"
-                  ? `1px solid ${ERROR_BORDER}`
-                  : "none",
-              boxShadow:
-                status === "ok"
-                  ? ACCENT_GLOW
-                  : status === "error"
-                    ? ERROR_GLOW
-                    : "none",
-              transition: "all 250ms ease",
-            }}
-          >
-            {leftIcon}
-          </ThemeIcon>
-          <div>
+      };
+
+  return (
+    <Group gap="md" wrap="nowrap" align="center">
+      {/* Индикатор */}
+      <ThemeIcon
+        radius="xl"
+        size={40}
+        variant="light"
+        style={{
+          ...indicatorStyles,
+          transition: "all 250ms ease",
+          flexShrink: 0,
+        }}
+      >
+        {indicatorIcon}
+      </ThemeIcon>
+
+      {/* Название */}
+      <Text
+        fw={500}
+        size="sm"
+        style={{
+          color: isOk ? "#fff" : isError ? "#ffb3b3" : "var(--text)",
+          fontFamily: FONT_FAMILY,
+          fontWeight: FONT_WEIGHT,
+          minWidth: rem(120),
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Text>
+
+      {/* Dropzone или файл */}
+      {file ? (
+        <Box
+          style={{
+            flex: 1,
+            border: "1px solid rgba(255,255,255,0.1)",
+            background: "rgba(110,107,255,0.08)",
+            borderRadius: rem(10),
+            padding: `${rem(10)} ${rem(12)}`,
+            fontFamily: FONT_FAMILY,
+            transition: "all 250ms ease",
+          }}
+        >
+          <Group justify="space-between" wrap="nowrap">
             <Text
               fz="sm"
-              fw={600}
-              c={status === "ok" ? "#fff" : "var(--text)"}
+              fw={500}
+              c="var(--text)"
               style={{
                 fontFamily: FONT_FAMILY,
-                fontWeight: FONT_WEIGHT + 100,
-              }}
-            >
-              {label}
-            </Text>
-            <Text
-              fz="xs"
-              c="var(--muted)"
-              style={{
-                fontFamily: FONT_FAMILY,
-                fontWeight: FONT_WEIGHT,
-                marginTop: rem(2),
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               {file.name}
             </Text>
-          </div>
-        </Group>
-        <Button
-          size="compact-sm"
-          variant="subtle"
-          onClick={onRemove}
-          color="red"
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              onClick={onRemove}
+              color="red"
+              styles={{
+                root: {
+                  fontFamily: FONT_FAMILY,
+                  fontWeight: FONT_WEIGHT,
+                  flexShrink: 0,
+                  "&:hover": {
+                    background: "rgba(255,107,107,0.15)",
+                  },
+                },
+              }}
+            >
+              <IconX size={14} />
+            </Button>
+          </Group>
+        </Box>
+      ) : (
+        <Dropzone
+          onDrop={(files) => {
+            if (files.length > 0) {
+              onDrop(files[0]);
+            }
+          }}
+          maxSize={500 * 1024 * 1024}
+          accept={accept}
+          multiple={false}
           styles={{
             root: {
+              flex: 1,
+              background: "rgba(255,255,255,0.03)",
+              border: isError
+                ? `2px dashed ${ERROR_BORDER}`
+                : "2px dashed rgba(110,107,255,0.3)",
+              borderRadius: rem(10),
+              padding: `${rem(12)} ${rem(16)}`,
               fontFamily: FONT_FAMILY,
               fontWeight: FONT_WEIGHT,
+              transition: "all 250ms ease",
+              cursor: "pointer",
+              minHeight: rem(48),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               "&:hover": {
-                background: "rgba(255,107,107,0.15)",
+                background: "rgba(110,107,255,0.05)",
+                borderColor: "rgba(110,107,255,0.5)",
+                boxShadow: "0 0 20px rgba(110,107,255,0.15)",
               },
             },
           }}
         >
-          <IconX size={16} />
-        </Button>
-      </Group>
-    </Box>
+          <Text
+            size="sm"
+            c="var(--muted)"
+            ta="center"
+            style={{
+              fontFamily: FONT_FAMILY,
+              fontWeight: FONT_WEIGHT,
+            }}
+          >
+            Перетащите файл или нажмите для выбора
+          </Text>
+        </Dropzone>
+      )}
+    </Group>
   );
 }
