@@ -835,12 +835,27 @@ export const useApp = create<AppState>((set, get) => {
           const data = await response.json();
           console.log("✅ Пользователь найден в БД:", data.user);
           if (data.user) {
+            // Загружаем подписку пользователя
+            let userPlan: Plan = "free";
+            try {
+              const subResponse = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}/subscription`);
+              if (subResponse.ok) {
+                const subData = await subResponse.json();
+                if (subData.subscription?.subscription) {
+                  userPlan = subData.subscription.subscription.name.toLowerCase() as Plan;
+                  console.log("✅ Подписка загружена:", userPlan);
+                }
+              }
+            } catch (e) {
+              console.warn("⚠️ Ошибка загрузки подписки, используем Free:", e);
+            }
+
             // Обновляем данные пользователя из БД
             const userFromDB: Seller = {
               id: `user:${data.user.telegram_id}`,
               slug: data.user.username || telegramData.username || "user",
               storeName: data.user.store_name || data.user.username || telegramData.username || "User",
-              plan: data.user.plan || "free",
+              plan: userPlan,
             };
 
             const existingUserSession: Session = {

@@ -224,6 +224,31 @@ app.patch("/api/users/:telegramId", async (req, res) => {
 });
 
 /**
+ * GET /api/users/:telegramId/subscription
+ * Получить подписку пользователя
+ */
+app.get("/api/users/:telegramId/subscription", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    const subscription = await db.getUserSubscription(user.id);
+
+    res.json({ ok: true, subscription });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId/subscription error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
  * GET /api/users/:telegramId/purchases
  * Получить историю покупок пользователя
  */
