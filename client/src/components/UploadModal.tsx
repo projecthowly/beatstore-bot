@@ -259,12 +259,26 @@ export default function UploadModal({ opened, onClose }: Props) {
   };
 
   const handleSubmit = async () => {
+    console.log("🔵 handleSubmit вызван");
+
     const { valid: step1Valid, bpmValue } = validateStep1();
+    console.log("🔵 step1Valid:", step1Valid, "bpmValue:", bpmValue);
+
     const { valid: step2Valid, prices: uploadPrices } = validateStep2();
+    console.log("🔵 step2Valid:", step2Valid, "uploadPrices:", uploadPrices);
+    console.log("🔵 scale:", scale);
 
     if (!step1Valid || !step2Valid || !scale || bpmValue === null) {
+      console.log("❌ Валидация не прошла:", {
+        step1Valid,
+        step2Valid,
+        scale,
+        bpmValue,
+      });
       return;
     }
+
+    console.log("✅ Валидация прошла, начинаем загрузку");
 
     try {
       await uploadBeat({
@@ -274,9 +288,10 @@ export default function UploadModal({ opened, onClose }: Props) {
         prices: uploadPrices,
         files,
       });
+      console.log("✅ Загрузка завершена успешно");
       onClose();
     } catch (error) {
-      console.error("Upload failed", error);
+      console.error("❌ Upload failed", error);
     }
   };
 
