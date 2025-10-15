@@ -75,6 +75,18 @@ export default function UploadModal({ opened, onClose }: Props) {
     stems: null,
   });
 
+  const [fileUrls, setFileUrls] = useState<{
+    cover: string | null;
+    mp3: string | null;
+    wav: string | null;
+    stems: string | null;
+  }>({
+    cover: null,
+    mp3: null,
+    wav: null,
+    stems: null,
+  });
+
   const [coverStatus, setCoverStatus] = useState<IndicatorStatus>("idle");
   const [mp3Status, setMp3Status] = useState<IndicatorStatus>("idle");
   const [wavStatus, setWavStatus] = useState<IndicatorStatus>("idle");
@@ -112,8 +124,87 @@ export default function UploadModal({ opened, onClose }: Props) {
     setPriceErrors({});
   }, [opened, licenses]);
 
-  const setFile = (key: keyof UploadFiles, value: File | null) => {
+  const setFile = async (key: keyof UploadFiles, value: File | null) => {
     setFiles((prev) => ({ ...prev, [key]: value }));
+
+    if (value) {
+      // Сразу начинаем загрузку на S3
+      await uploadFileToS3(key, value);
+    }
+  };
+
+  const uploadFileToS3 = async (key: keyof UploadFiles, file: File) => {
+    // Устанавливаем статус "uploading"
+    switch (key) {
+      case "cover":
+        setCoverStatus("uploading");
+        break;
+      case "mp3":
+        setMp3Status("uploading");
+        break;
+      case "wav":
+        setWavStatus("uploading");
+        break;
+      case "stems":
+        setStemsStatus("uploading");
+        break;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", key);
+
+      const response = await fetch(`${import.meta.env.VITE_API_BASE || "https://beatry.store"}/api/upload-file`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "upload failed");
+      }
+
+      // Сохраняем URL загруженного файла
+      setFileUrls((prev) => ({ ...prev, [key]: data.url }));
+
+      // Устанавливаем статус "ok"
+      switch (key) {
+        case "cover":
+          setCoverStatus("ok");
+          break;
+        case "mp3":
+          setMp3Status("ok");
+          break;
+        case "wav":
+          setWavStatus("ok");
+          break;
+        case "stems":
+          setStemsStatus("ok");
+          break;
+      }
+
+      console.log(`✅ ${key} uploaded:`, data.url);
+    } catch (error) {
+      console.error(`❌ Failed to upload ${key}:`, error);
+
+      // Устанавливаем статус "error"
+      switch (key) {
+        case "cover":
+          setCoverStatus("error");
+          break;
+        case "mp3":
+          setMp3Status("error");
+          break;
+        case "wav":
+          setWavStatus("error");
+          break;
+        case "stems":
+          setStemsStatus("error");
+          break;
+      }
+    }
   };
 
   const removeFile = (key: keyof UploadFiles) => {
@@ -201,15 +292,16 @@ export default function UploadModal({ opened, onClose }: Props) {
   const validateStep1 = () => {
     let valid = true;
 
-    if (!files.cover) {
+    // Проверяем что файлы выбраны И загружены (статус "ok")
+    if (!files.cover || coverStatus !== "ok") {
       setCoverStatus("error");
       valid = false;
     }
-    if (!files.mp3) {
+    if (!files.mp3 || mp3Status !== "ok") {
       setMp3Status("error");
       valid = false;
     }
-    if (!files.wav) {
+    if (!files.wav || wavStatus !== "ok") {
       setWavStatus("error");
       valid = false;
     }
@@ -297,37 +389,22 @@ export default function UploadModal({ opened, onClose }: Props) {
     try {
       setIsUploading(true);
 
-      // Устанавливаем статус "uploading" для каждого файла
-      setCoverStatus("uploading");
-      setMp3Status("uploading");
-      setWavStatus("uploading");
-      if (files.stems) setStemsStatus("uploading");
-
+      // Файлы уже загружены, отправляем только URL и метаданные
       await uploadBeat({
         title: title.trim(),
         key: scale,
         bpm: bpmValue,
         prices: uploadPrices,
-        files,
+        fileUrls, // Передаём URL вместо файлов
       });
 
-      console.log("✅ Загрузка завершена успешно");
-
-      // Устанавливаем статус "ok" для всех файлов
-      setCoverStatus("ok");
-      setMp3Status("ok");
-      setWavStatus("ok");
-      if (files.stems) setStemsStatus("ok");
-
+      console.log("✅ Бит создан успешно");
       onClose();
     } catch (error) {
-      console.error("❌ Upload failed", error);
+      console.error("❌ Failed to create beat", error);
 
-      // Устанавливаем статус "error" для всех файлов при ошибке
-      setCoverStatus("error");
-      setMp3Status("error");
-      setWavStatus("error");
-      if (files.stems) setStemsStatus("error");
+      // Показываем ошибку но не меняем статус файлов (они уже загружены)
+      alert("Ошибка при создании бита. Попробуйте ещё раз.");
     } finally {
       setIsUploading(false);
     }

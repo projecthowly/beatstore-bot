@@ -96,11 +96,11 @@ type UploadPayload = {
   key: string;
   bpm: number;
   prices: Prices;
-  files: {
-    cover: File | null;
-    mp3: File | null;
-    wav: File | null;
-    stems: File | null;
+  fileUrls: {
+    cover: string | null;
+    mp3: string | null;
+    wav: string | null;
+    stems: string | null;
   };
 };
 type CartItem = { beatId: string; license: LicenseType };
@@ -515,26 +515,30 @@ export const useApp = create<AppState>((set, get) => {
     /* === ЗАГРУЗКА === */
     async uploadBeat(payload) {
       const endpoint = `${API_BASE}/api/beats/upload`;
-      const fd = new FormData();
-      fd.append("title", payload.title);
-      fd.append("key", payload.key);
-      fd.append("bpm", String(payload.bpm));
 
-      // ✅ Добавляем цены
-      fd.append("prices", JSON.stringify(payload.prices));
-
-      if (payload.files.cover) fd.append("cover", payload.files.cover);
-      if (payload.files.mp3) fd.append("mp3", payload.files.mp3);
-      if (payload.files.wav) fd.append("wav", payload.files.wav);
-      if (payload.files.stems) fd.append("stems", payload.files.stems);
-
-      // добавляем автора
+      // Теперь отправляем JSON вместо FormData (файлы уже загружены)
       const me = get().me;
-      fd.append("authorId", me.id);
-      fd.append("authorName", me.storeName);
-      fd.append("authorSlug", me.slug);
 
-      const res = await fetch(endpoint, { method: "POST", body: fd });
+      const body = {
+        title: payload.title,
+        key: payload.key,
+        bpm: payload.bpm,
+        prices: payload.prices,
+        coverUrl: payload.fileUrls.cover,
+        mp3Url: payload.fileUrls.mp3,
+        wavUrl: payload.fileUrls.wav,
+        stemsUrl: payload.fileUrls.stems || "",
+        authorId: me.id,
+        authorName: me.storeName,
+        authorSlug: me.slug,
+      };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "upload failed");
 

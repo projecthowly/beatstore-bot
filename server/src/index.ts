@@ -389,6 +389,43 @@ app.get("/api/beats", async (req, res) => {
   }
 });
 
+/* ---------- POST /api/upload-file ---------- */
+// Немедленная загрузка отдельного файла на S3
+app.post(
+  "/api/upload-file",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const file = req.file;
+      const fileType = req.body?.type || "unknown"; // cover, mp3, wav, stems
+
+      if (!file) {
+        return res.status(400).json({ ok: false, error: "no-file" });
+      }
+
+      console.log(`📤 Immediate upload: ${file.originalname} (${fileType})`);
+
+      // Определяем папку по типу файла
+      const folder = fileType === "cover" ? "covers" : "audio";
+
+      // Загружаем на S3
+      const url = await uploadToS3(
+        file.path,
+        generateS3Key(folder, file.originalname),
+        getMimeType(file.originalname)
+      );
+
+      // Удаляем временный файл
+      await fs.unlink(file.path).catch(() => {});
+
+      res.json({ ok: true, url });
+    } catch (e) {
+      console.error("POST /api/upload-file error:", e);
+      res.status(500).json({ ok: false, error: "upload-failed" });
+    }
+  }
+);
+
 /* ---------- POST /api/beats/upload ---------- */
 app.post(
   "/api/beats/upload",
@@ -421,50 +458,17 @@ app.post(
       const authorName = String(req.body?.authorName || "").trim();
       const authorSlug = String(req.body?.authorSlug || "").trim();
 
-      const fCover = (req.files as any)?.cover?.[0] || null;
-      const fMp3   = (req.files as any)?.mp3?.[0]   || null;
-      const fWav   = (req.files as any)?.wav?.[0]   || null;
-      const fStems = (req.files as any)?.stems?.[0] || null;
+      // Получаем URL файлов (они уже загружены через /api/upload-file)
+      const coverUrl = String(req.body?.coverUrl || "").trim();
+      const mp3Url = String(req.body?.mp3Url || "").trim();
+      const wavUrl = String(req.body?.wavUrl || "").trim();
+      const stemsUrl = String(req.body?.stemsUrl || "").trim();
 
-      if (!title || !bpm || !fCover || !fMp3 || !fWav) {
+      if (!title || !bpm || !coverUrl || !mp3Url || !wavUrl) {
         return res.status(400).json({ ok: false, error: "required-missing" });
       }
 
-      console.log(`📤 Uploading beat "${title}" to S3...`);
-
-      // Загружаем файлы в S3
-      const coverUrl = await uploadToS3(
-        fCover.path,
-        generateS3Key("covers", fCover.originalname),
-        getMimeType(fCover.originalname)
-      );
-
-      const mp3Url = await uploadToS3(
-        fMp3.path,
-        generateS3Key("audio", fMp3.originalname),
-        getMimeType(fMp3.originalname)
-      );
-
-      const wavUrl = await uploadToS3(
-        fWav.path,
-        generateS3Key("audio", fWav.originalname),
-        getMimeType(fWav.originalname)
-      );
-
-      let stemsUrl = "";
-      if (fStems) {
-        stemsUrl = await uploadToS3(
-          fStems.path,
-          generateS3Key("stems", fStems.originalname),
-          getMimeType(fStems.originalname)
-        );
-      }
-
-      // Удаляем временные файлы после загрузки в S3
-      await fs.unlink(fCover.path).catch(() => {});
-      await fs.unlink(fMp3.path).catch(() => {});
-      await fs.unlink(fWav.path).catch(() => {});
-      if (fStems) await fs.unlink(fStems.path).catch(() => {});
+      console.log(`✅ Creating beat "${title}" with pre-uploaded files`);
 
       const raw = await fs.readFile(BEATS_JSON, "utf8").catch(() => "[]");
       const list: any[] = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
@@ -489,7 +493,7 @@ app.post(
       list.unshift(record);
       await fs.writeFile(BEATS_JSON, JSON.stringify(list, null, 2), "utf8");
 
-      console.log(`✅ Beat "${title}" uploaded successfully`);
+      console.log(`✅ Beat "${title}" created successfully`);
       res.json({ ok: true, beat: record });
     } catch (e) {
       console.error("POST /api/beats/upload error:", e);
