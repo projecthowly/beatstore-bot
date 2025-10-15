@@ -115,6 +115,7 @@ export default function UploadModal({ opened, onClose }: Props) {
     setPrices(initialPrices);
 
     setFiles({ cover: null, mp3: null, wav: null, stems: null });
+    setFileUrls({ cover: null, mp3: null, wav: null, stems: null });
     setCoverStatus("idle");
     setMp3Status("idle");
     setWavStatus("idle");
@@ -208,7 +209,9 @@ export default function UploadModal({ opened, onClose }: Props) {
   };
 
   const removeFile = (key: keyof UploadFiles) => {
-    setFile(key, null);
+    setFiles((prev) => ({ ...prev, [key]: null }));
+    setFileUrls((prev) => ({ ...prev, [key]: null }));
+
     switch (key) {
       case "cover":
         setCoverStatus("idle");
@@ -563,7 +566,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                     }}
                     onDrop={(file) => {
                       setFile("cover", file);
-                      setCoverStatus("ok");
+                      // Статус изменится автоматически в uploadFileToS3
                     }}
                     onRemove={() => removeFile("cover")}
                   />
@@ -577,7 +580,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                     }}
                     onDrop={(file) => {
                       setFile("mp3", file);
-                      setMp3Status("ok");
+                      // Статус изменится автоматически в uploadFileToS3
                     }}
                     onRemove={() => removeFile("mp3")}
                   />
@@ -592,7 +595,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                     }}
                     onDrop={(file) => {
                       setFile("wav", file);
-                      setWavStatus("ok");
+                      // Статус изменится автоматически в uploadFileToS3
                     }}
                     onRemove={() => removeFile("wav")}
                   />
@@ -606,7 +609,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                     }}
                     onDrop={(file) => {
                       setFile("stems", file);
-                      setStemsStatus("ok");
+                      // Статус изменится автоматически в uploadFileToS3
                     }}
                     onRemove={() => removeFile("stems")}
                     optional
@@ -762,11 +765,53 @@ export default function UploadModal({ opened, onClose }: Props) {
               <NeonButton
                 onClick={handleNextStep}
                 size="md"
+                disabled={
+                  // Блокируем кнопку если:
+                  // - обязательные файлы не выбраны
+                  // - или файлы загружаются (статус "uploading")
+                  // - или файлы не загружены (статус не "ok")
+                  !files.cover ||
+                  !files.mp3 ||
+                  !files.wav ||
+                  coverStatus === "uploading" ||
+                  mp3Status === "uploading" ||
+                  wavStatus === "uploading" ||
+                  stemsStatus === "uploading" ||
+                  (files.cover && coverStatus !== "ok") ||
+                  (files.mp3 && mp3Status !== "ok") ||
+                  (files.wav && wavStatus !== "ok")
+                }
                 style={{
                   width: "100%",
                   fontSize: rem(15),
                   fontWeight: 600,
                   height: rem(44),
+                  opacity:
+                    !files.cover ||
+                    !files.mp3 ||
+                    !files.wav ||
+                    coverStatus === "uploading" ||
+                    mp3Status === "uploading" ||
+                    wavStatus === "uploading" ||
+                    stemsStatus === "uploading" ||
+                    (files.cover && coverStatus !== "ok") ||
+                    (files.mp3 && mp3Status !== "ok") ||
+                    (files.wav && wavStatus !== "ok")
+                      ? 0.4
+                      : 1,
+                  cursor:
+                    !files.cover ||
+                    !files.mp3 ||
+                    !files.wav ||
+                    coverStatus === "uploading" ||
+                    mp3Status === "uploading" ||
+                    wavStatus === "uploading" ||
+                    stemsStatus === "uploading" ||
+                    (files.cover && coverStatus !== "ok") ||
+                    (files.mp3 && mp3Status !== "ok") ||
+                    (files.wav && wavStatus !== "ok")
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
                 Далее

@@ -47,7 +47,8 @@ export async function uploadToS3(
         Key: s3Key,
         Body: fileStream,
         ContentType: contentType,
-        ACL: "public-read", // Файл будет доступен по прямой ссылке
+        // Убрали ACL - Selectel не поддерживает его в запросах
+        // Доступ настраивается через политику бакета в панели Selectel
       },
     });
 
@@ -96,7 +97,7 @@ export async function uploadBufferToS3(
       Key: s3Key,
       Body: buffer,
       ContentType: contentType,
-      ACL: "public-read",
+      // Убрали ACL - Selectel не поддерживает
     });
 
     await s3Client.send(command);
