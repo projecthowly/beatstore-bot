@@ -55,12 +55,32 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     [input.telegram_id, input.username, input.avatar_url, input.role]
   );
 
-  // Если это продюсер - создаем дефолтную подписку Free
+  // Если это продюсер - создаем дефолтную подписку Free и дефолтные лицензии
   if (input.role === "producer") {
     await assignFreeSubscription(result.rows[0].id);
+    await createDefaultLicenses(result.rows[0].id);
   }
 
   return result.rows[0];
+}
+
+/**
+ * Создать дефолтные лицензии для нового продюсера (экспортируется для использования при смене роли)
+ */
+export async function createDefaultLicenses(userId: number): Promise<void> {
+  const defaultLicenses = [
+    { license_key: "basic", license_name: "Basic License", default_price: null },
+    { license_key: "premium", license_name: "Premium License", default_price: null },
+  ];
+
+  for (const lic of defaultLicenses) {
+    await pool.query(
+      `INSERT INTO user_license_settings (user_id, license_key, license_name, default_price)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, license_key) DO NOTHING`,
+      [userId, lic.license_key, lic.license_name, lic.default_price]
+    );
+  }
 }
 
 /**

@@ -545,6 +545,46 @@ export const useApp = create<AppState>((set, get) => {
       const next = [newBeat, ...get().beats];
       set({ beats: next });
       console.log("✅ Бит добавлен:", newBeat.title);
+
+      // 🎯 Автоматически сохраняем цены как дефолтные, если это первая загрузка (defaultPrice === null)
+      const licensesToUpdate: License[] = [];
+      const currentLicenses = get().licenses;
+
+      currentLicenses.forEach((license) => {
+        const priceValue = payload.prices[license.id];
+        // Если defaultPrice === null и цена указана, сохраняем как дефолтную
+        if (license.defaultPrice === null && priceValue !== null && priceValue !== undefined) {
+          licensesToUpdate.push({
+            ...license,
+            defaultPrice: priceValue,
+          });
+        }
+      });
+
+      // Если есть лицензии для обновления, сохраняем их
+      if (licensesToUpdate.length > 0) {
+        // Обновляем локально
+        const updatedLicenses = currentLicenses.map((lic) => {
+          const updated = licensesToUpdate.find((l) => l.id === lic.id);
+          return updated || lic;
+        });
+        set({ licenses: updatedLicenses });
+
+        // Сохраняем в БД
+        const telegramId = get().telegramId;
+        if (telegramId) {
+          try {
+            await fetch(`${API_BASE}/api/users/${telegramId}/licenses`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ licenses: updatedLicenses }),
+            });
+            console.log("✅ Дефолтные цены лицензий сохранены после первой загрузки:", licensesToUpdate);
+          } catch (e) {
+            console.error("❌ Ошибка сохранения дефолтных цен:", e);
+          }
+        }
+      }
     },
 
     /* === ПРОФИЛЬ: смена ника (сохраняет в БД) === */

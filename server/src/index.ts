@@ -191,6 +191,9 @@ app.patch("/api/users/:telegramId/role", async (req, res) => {
 
     const updatedUser = await db.updateUser(user.id, { role });
 
+    // Создаём дефолтные лицензии для нового продюсера
+    await db.createDefaultLicenses(user.id);
+
     res.json({ ok: true, user: updatedUser });
   } catch (e) {
     console.error("PATCH /api/users/:telegramId/role error:", e);
@@ -212,6 +215,11 @@ app.patch("/api/users/:telegramId", async (req, res) => {
     const user = await db.findUserByTelegramId(telegramId);
     if (!user) {
       return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Если меняется роль на producer и пользователь не был producer, создаём дефолтные лицензии
+    if (req.body.role === "producer" && user.role !== "producer") {
+      await db.createDefaultLicenses(user.id);
     }
 
     const updatedUser = await db.updateUser(user.id, req.body);
