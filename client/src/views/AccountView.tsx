@@ -10,17 +10,18 @@ import {
   Modal,
 } from "@mantine/core";
 import { IconUser } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { GlassCard, NeonButton } from "../ui/Glass";
 
 export default function AccountView() {
-  const { me, seller, updateNickname, isOwnStore, goToOwnStore, session, changeRole } = useApp();
+  const { me, seller, updateNickname, isOwnStore, goToOwnStore, session } = useApp();
+  const navigate = useNavigate();
 
   const [opened, setOpened] = useState(false);
   const [name, setName] = useState(() => me.storeName || "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [roleChangeModalOpened, setRoleChangeModalOpened] = useState(false);
 
   const isArtist = session.role === "artist";
   const isProducer = session.role === "producer";
@@ -34,11 +35,11 @@ export default function AccountView() {
   const validate = useCallback((value: string) => {
     const val = value.trim();
     if (!val) return "Введите ник";
-    if (val.length > 32) return "Слишком длинный ник (макс. 32 символа)";
+    if (val.length > 15) return "Слишком длинный ник (макс. 15 символов)";
     return null;
   }, []);
 
-  const onSave = () => {
+  const onSave = async () => {
     const validationError = validate(name);
     if (validationError) {
       setError(validationError);
@@ -47,18 +48,14 @@ export default function AccountView() {
 
     setSaving(true);
     try {
-      updateNickname(name.trim());
+      await updateNickname(name.trim());
       setOpened(false);
+    } catch (error) {
+      console.error("Ошибка при сохранении ника:", error);
+      setError("Ошибка при сохранении. Попробуйте снова.");
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleRoleChange = () => {
-    changeRole("producer");
-    setRoleChangeModalOpened(false);
-    // Перенаправляем на главную страницу продюсера
-    window.location.href = "/";
   };
 
   const currentPlan = seller.plan || "—";
@@ -137,6 +134,23 @@ export default function AccountView() {
               Смена ника
             </Button>
 
+            {isProducer && (
+              <Button
+                variant="outline"
+                size="xs"
+                c="var(--text)"
+                styles={{
+                  root: {
+                    borderColor: "var(--surface-border)",
+                    background: "rgba(255,255,255,0.04)",
+                  },
+                }}
+                onClick={() => navigate("/licenses")}
+              >
+                Управление лицензиями 📜
+              </Button>
+            )}
+
             {isArtist && (
               <Button
                 variant="outline"
@@ -148,9 +162,12 @@ export default function AccountView() {
                     background: "rgba(255,255,255,0.04)",
                   },
                 }}
-                onClick={() => setRoleChangeModalOpened(true)}
+                onClick={async () => {
+                  await goToOwnStore();
+                  navigate("/");
+                }}
               >
-                Стать продюсером 🎹
+                Открыть битстор 🎹
               </Button>
             )}
 
@@ -158,7 +175,10 @@ export default function AccountView() {
               <Button
                 variant="light"
                 size="xs"
-                onClick={goToOwnStore}
+                onClick={async () => {
+                  await goToOwnStore();
+                  navigate("/");
+                }}
                 styles={{ root: { color: "var(--text)" } }}
               >
                 Открыть мою витрину
@@ -277,6 +297,7 @@ export default function AccountView() {
             <TextInput
               placeholder="Ваш ник"
               value={name}
+              maxLength={15}
               onChange={(event) => {
                 setName(event.currentTarget.value);
                 if (error) setError(null);
@@ -359,119 +380,6 @@ export default function AccountView() {
             >
               Ник обновится сразу и появится в карточках магазина
             </Text>
-          </Stack>
-        </GlassCard>
-      </Modal>
-
-      {/* Модальное окно подтверждения смены роли */}
-      <Modal
-        opened={roleChangeModalOpened}
-        onClose={() => setRoleChangeModalOpened(false)}
-        centered
-        size="auto"
-        withCloseButton={false}
-        padding={0}
-        styles={{
-          overlay: {
-            background: "rgba(7, 8, 12, 0.85)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-          },
-          content: {
-            background: "transparent",
-            border: "none",
-            boxShadow: "none",
-            width: "min(380px, 92vw)",
-            padding: 0,
-          },
-          body: { padding: 0 },
-        }}
-      >
-        <GlassCard
-          style={{
-            position: "relative",
-            padding: "clamp(20px, 5vw, 24px)",
-            color: "var(--text)",
-          }}
-        >
-          <Stack gap="md">
-            <Stack gap="xs" align="center">
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, rgba(110,107,255,0.2), rgba(46,161,255,0.15))",
-                  border: "1px solid rgba(110,107,255,0.35)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 24,
-                }}
-              >
-                🎹
-              </div>
-
-              <Text
-                fw={700}
-                ta="center"
-                style={{
-                  color: "var(--text)",
-                  fontSize: "clamp(15px, 4vw, 17px)",
-                  marginTop: 4,
-                }}
-              >
-                Стать продюсером?
-              </Text>
-            </Stack>
-
-            <Text
-              size="sm"
-              ta="center"
-              style={{
-                color: "var(--muted)",
-                lineHeight: 1.5,
-              }}
-            >
-              Вы получите доступ к загрузке битов, аналитике и управлению своим магазином. Это действие необратимо.
-            </Text>
-
-            <Group justify="space-between" gap="10px" align="center" mt="xs">
-              <button
-                onClick={() => setRoleChangeModalOpened(false)}
-                style={{
-                  flex: 1,
-                  height: 42,
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "var(--text)",
-                  fontSize: "clamp(13px, 3.5vw, 14px)",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                }}
-              >
-                Отмена
-              </button>
-              <NeonButton
-                onClick={handleRoleChange}
-                style={{
-                  flex: 1,
-                  height: 42,
-                  fontSize: "clamp(13px, 3.5vw, 14px)",
-                  fontWeight: 700,
-                }}
-              >
-                Подтвердить
-              </NeonButton>
-            </Group>
           </Stack>
         </GlassCard>
       </Modal>

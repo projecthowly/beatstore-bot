@@ -10,7 +10,6 @@ import {
   TextInput,
   NumberInput,
   Select,
-  Badge,
   ThemeIcon,
   Tooltip,
   rem,
@@ -34,9 +33,7 @@ type Props = { opened: boolean; onClose: () => void };
 type IndicatorStatus = "idle" | "ok" | "error";
 
 type UploadPrices = {
-  mp3: number | null;
-  wav: number | null;
-  stems: number | null;
+  [licenseId: string]: number | null;
 };
 
 type UploadFiles = {
@@ -64,14 +61,12 @@ const ERROR_GLOW = "0 0 12px rgba(255,107,107,0.3)";
 const INDICATOR_ERROR_BG = "rgba(255,107,107,0.12)";
 
 export default function UploadModal({ opened, onClose }: Props) {
-  const { uploadBeat } = useApp();
+  const { uploadBeat, licenses } = useApp();
 
   const [title, setTitle] = useState("");
-  const [scale, setScale] = useState("Am");
+  const [scale, setScale] = useState<string | null>(null); // ✅ Нет дефолтного значения
   const [bpm, setBpm] = useState<number | "">("");
-  const [priceMp3, setPriceMp3] = useState<number | "">("");
-  const [priceWav, setPriceWav] = useState<number | "">("");
-  const [priceStems, setPriceStems] = useState<number | "">("");
+  const [prices, setPrices] = useState<Record<string, number | "">>({});
 
   const [files, setFiles] = useState<UploadFiles>({
     cover: null,
@@ -87,19 +82,23 @@ export default function UploadModal({ opened, onClose }: Props) {
 
   const [titleErr, setTitleErr] = useState(false);
   const [bpmErr, setBpmErr] = useState(false);
-  const [priceMp3Err, setPriceMp3Err] = useState(false);
-  const [priceWavErr, setPriceWavErr] = useState(false);
-  const [priceStemsErr, setPriceStemsErr] = useState(false);
+  const [priceErrors, setPriceErrors] = useState<Record<string, boolean>>({});
 
+  // Инициализация цен из лицензий при открытии модального окна
   useEffect(() => {
     if (!opened) return;
 
     setTitle("");
-    setScale("Am");
+    setScale(null); // ✅ Сбрасываем на null
     setBpm("");
-    setPriceMp3("");
-    setPriceWav("");
-    setPriceStems("");
+
+    // Инициализируем цены из defaultPrice лицензий
+    const initialPrices: Record<string, number | ""> = {};
+    licenses.forEach((license) => {
+      initialPrices[license.id] = license.defaultPrice ?? "";
+    });
+    setPrices(initialPrices);
+
     setFiles({ cover: null, mp3: null, wav: null, stems: null });
     setCoverStatus("idle");
     setMp3Status("idle");
@@ -107,10 +106,8 @@ export default function UploadModal({ opened, onClose }: Props) {
     setStemsStatus("idle");
     setTitleErr(false);
     setBpmErr(false);
-    setPriceMp3Err(false);
-    setPriceWavErr(false);
-    setPriceStemsErr(false);
-  }, [opened]);
+    setPriceErrors({});
+  }, [opened, licenses]);
 
   const setFile = (key: keyof UploadFiles, value: File | null) => {
     setFiles((prev) => ({ ...prev, [key]: value }));
@@ -279,32 +276,30 @@ export default function UploadModal({ opened, onClose }: Props) {
     setBpmErr(!bpmValid);
     valid = valid && bpmValid;
 
-    const prices: UploadPrices = {
-      mp3: parseNumeric(priceMp3),
-      wav: parseNumeric(priceWav),
-      stems: parseNumeric(priceStems),
-    };
+    // Валидация цен для всех лицензий
+    const uploadPrices: UploadPrices = {};
+    const newPriceErrors: Record<string, boolean> = {};
 
-    const mp3Valid = prices.mp3 !== null && prices.mp3 > 0;
-    const wavValid = prices.wav !== null && prices.wav > 0;
-    const stemsValid = prices.stems !== null && prices.stems > 0;
-    setPriceMp3Err(!mp3Valid);
-    setPriceWavErr(!wavValid);
-    setPriceStemsErr(!stemsValid);
-    valid = valid && mp3Valid && wavValid && stemsValid;
+    licenses.forEach((license) => {
+      const priceValue = parseNumeric(prices[license.id] || "");
+      uploadPrices[license.id] = priceValue;
 
-    return { valid, bpmValue, prices };
+      const priceValid = priceValue !== null && priceValue > 0;
+      newPriceErrors[license.id] = !priceValid;
+
+      if (!priceValid) {
+        valid = false;
+      }
+    });
+
+    setPriceErrors(newPriceErrors);
+
+    return { valid, bpmValue, prices: uploadPrices };
   };
 
   const handleSubmit = async () => {
-    const { valid, bpmValue, prices } = validate();
-    if (
-      !valid ||
-      bpmValue === null ||
-      prices.mp3 === null ||
-      prices.wav === null ||
-      prices.stems === null
-    ) {
+    const { valid, bpmValue, prices: uploadPrices } = validate();
+    if (!valid || !scale || bpmValue === null) {
       return;
     }
 
@@ -313,7 +308,7 @@ export default function UploadModal({ opened, onClose }: Props) {
         title: title.trim(),
         key: scale,
         bpm: bpmValue,
-        prices,
+        prices: uploadPrices,
         files,
       });
       onClose();
@@ -595,7 +590,9 @@ export default function UploadModal({ opened, onClose }: Props) {
                 <Group grow gap="sm">
                   <Select
                     size="sm"
-                    label="Тональность"
+                    label="Тональность *"
+                    placeholder="Выберите тональность"
+                    searchable
                     data={[
                       "Am",
                       "A#m",
@@ -618,7 +615,7 @@ export default function UploadModal({ opened, onClose }: Props) {
                       "G",
                     ]}
                     value={scale}
-                    onChange={(value) => setScale(value || "Am")}
+                    onChange={(value) => setScale(value)}
                     styles={{
                       label: {
                         color: "var(--text)",
@@ -675,10 +672,19 @@ export default function UploadModal({ opened, onClose }: Props) {
                     label="BPM *"
                     value={bpm}
                     min={30}
-                    max={240}
-                    onChange={(value) =>
-                      setBpm(value === "" ? "" : Number(value))
-                    }
+                    max={999}
+                    clampBehavior="strict"
+                    onChange={(value) => {
+                      // ✅ Ограничение до 3 цифр (максимум 999)
+                      if (value === "") {
+                        setBpm("");
+                      } else {
+                        const num = Number(value);
+                        if (num <= 999) {
+                          setBpm(num);
+                        }
+                      }
+                    }}
                     hideControls
                     error={bpmErr ? " " : undefined}
                     withErrorStyles={false}
@@ -687,81 +693,37 @@ export default function UploadModal({ opened, onClose }: Props) {
                 </Group>
 
                 <Group grow gap="sm">
-                  <NumberInput
-                    size="sm"
-                    label="Цена MP3 *"
-                    value={priceMp3}
-                    onChange={(value) =>
-                      setPriceMp3(value === "" ? "" : Number(value))
-                    }
-                    min={0}
-                    hideControls
-                    leftSection={
-                      <Badge
-                        variant="light"
-                        style={{
-                          background: ACCENT_GRADIENT,
-                          color: "#fff",
-                          border: "none",
-                        }}
-                      >
-                        $
-                      </Badge>
-                    }
-                    error={priceMp3Err ? " " : undefined}
-                    withErrorStyles={false}
-                    styles={getControlStyles(priceMp3Err)}
-                  />
-                  <NumberInput
-                    size="sm"
-                    label="Цена WAV *"
-                    value={priceWav}
-                    onChange={(value) =>
-                      setPriceWav(value === "" ? "" : Number(value))
-                    }
-                    min={0}
-                    hideControls
-                    leftSection={
-                      <Badge
-                        variant="light"
-                        style={{
-                          background: ACCENT_GRADIENT,
-                          color: "#fff",
-                          border: "none",
-                        }}
-                      >
-                        $
-                      </Badge>
-                    }
-                    error={priceWavErr ? " " : undefined}
-                    withErrorStyles={false}
-                    styles={getControlStyles(priceWavErr)}
-                  />
-                  <NumberInput
-                    size="sm"
-                    label="Цена STEMS *"
-                    value={priceStems}
-                    onChange={(value) =>
-                      setPriceStems(value === "" ? "" : Number(value))
-                    }
-                    min={0}
-                    hideControls
-                    leftSection={
-                      <Badge
-                        variant="light"
-                        style={{
-                          background: ACCENT_GRADIENT,
-                          color: "#fff",
-                          border: "none",
-                        }}
-                      >
-                        $
-                      </Badge>
-                    }
-                    error={priceStemsErr ? " " : undefined}
-                    withErrorStyles={false}
-                    styles={getControlStyles(priceStemsErr)}
-                  />
+                  {licenses.map((license) => (
+                    <NumberInput
+                      key={license.id}
+                      size="sm"
+                      label={`Цена ${license.name} *`}
+                      value={prices[license.id] ?? ""}
+                      onChange={(value) =>
+                        setPrices((prev) => ({
+                          ...prev,
+                          [license.id]: value === "" ? "" : Number(value),
+                        }))
+                      }
+                      min={0}
+                      hideControls
+                      leftSection={
+                        <Text
+                          size="xs"
+                          fw={600}
+                          style={{
+                            color: "var(--muted)",
+                            paddingLeft: rem(4),
+                          }}
+                        >
+                          $
+                        </Text>
+                      }
+                      error={priceErrors[license.id] ? " " : undefined}
+                      withErrorStyles={false}
+                      styles={getControlStyles(priceErrors[license.id] || false)}
+                    />
+                  ))}
                 </Group>
               </Stack>
             </Box>

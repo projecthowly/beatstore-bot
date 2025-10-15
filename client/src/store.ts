@@ -74,67 +74,10 @@ function normalizeBeat(b: Beat): Beat {
   };
 }
 
-/* ========= localStorage ========= */
-const LS_BEATS = "gb:beats:v2";
-const LS_PROFILE = "gb:profile:v1"; // <— профайл (me/seller)
-const LS_SESSION = "gb:session:v1"; // <— роль и флаг нового пользователя
-const OLD_KEYS = ["gb:beats", "gb_beats_v1"];
+/* ========= localStorage (только для сессии) ========= */
+const LS_SESSION = "gb:session:v1"; // <— роль и флаг нового пользователя (только для быстрой загрузки)
+const OLD_KEYS = ["gb:beats", "gb_beats_v1", "gb:beats:v2", "gb:profile:v1"]; // Очищаем старые ключи
 
-function loadBeatsFromLS(): Beat[] {
-  try {
-    const raw = localStorage.getItem(LS_BEATS);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    const list = Array.isArray(arr) ? (arr as Beat[]) : [];
-    return list.map(normalizeBeat);
-  } catch {
-    return [];
-  }
-}
-function saveBeatsToLS(beats: Beat[]) {
-  try {
-    localStorage.setItem(LS_BEATS, JSON.stringify(beats));
-  } catch {}
-}
-
-type Profile = { id: string; slug: string; storeName: string; plan: Plan };
-function loadProfileFromLS(defaults: Profile): Profile {
-  try {
-    const raw = localStorage.getItem(LS_PROFILE);
-    if (!raw) return defaults;
-    const p = JSON.parse(raw);
-    if (!p || typeof p !== "object") return defaults;
-    const merged: Profile = {
-      id: String(p.id || defaults.id),
-      slug: String(p.slug || defaults.slug),
-      storeName: String(p.storeName || defaults.storeName),
-      plan: (p.plan as Plan) || defaults.plan,
-    };
-    return merged;
-  } catch {
-    return defaults;
-  }
-}
-function saveProfileToLS(p: Profile) {
-  try {
-    localStorage.setItem(LS_PROFILE, JSON.stringify(p));
-  } catch {}
-}
-
-// function loadSessionFromLS(): Session | null {
-//   try {
-//     const raw = localStorage.getItem(LS_SESSION);
-//     if (!raw) return null;
-//     const s = JSON.parse(raw);
-//     if (!s || typeof s !== "object") return null;
-//     return {
-//       role: s.role === "artist" ? "artist" : "producer",
-//       isNewUser: s.isNewUser === true,
-//     };
-//   } catch {
-//     return null;
-//   }
-// }
 function saveSessionToLS(s: Session) {
   try {
     localStorage.setItem(LS_SESSION, JSON.stringify(s));
@@ -147,7 +90,7 @@ audio.preload = "none";
 audio.crossOrigin = "anonymous";
 
 /* ========= типы ========= */
-type Prices = { mp3: number | null; wav: number | null; stems: number | null };
+type Prices = { [licenseId: string]: number | null };
 type UploadPayload = {
   title: string;
   key: string;
@@ -161,6 +104,12 @@ type UploadPayload = {
   };
 };
 type CartItem = { beatId: string; license: LicenseType };
+
+export type License = {
+  id: string;
+  name: string;
+  defaultPrice: number | null;
+};
 
 type AppState = {
   beats: Beat[];
@@ -180,9 +129,25 @@ type AppState = {
 
   cart: CartItem[];
 
+  // Лицензии пользователя
+  licenses: License[];
+  loadLicenses: () => Promise<void>;
+  updateLicense: (licenseId: string, updates: Partial<License>) => Promise<void>;
+  addLicense: (license: Omit<License, "id">) => Promise<void>;
+  deleteLicense: (licenseId: string) => Promise<void>;
+
   playerCollapsed: boolean;
   setPlayerCollapsed: (collapsed: boolean) => void;
   togglePlayerCollapsed: () => void;
+
+  // Переключение между глобальным и личным битстором
+  viewingGlobalStore: boolean; // true = глобальный битстор, false = личный битстор
+  storeSwapAnimating: boolean; // true во время анимации переключения
+  pendingStoreView: boolean | null; // новое значение viewingGlobalStore, которое применится после fade-out
+  setViewingGlobalStore: (viewing: boolean) => void;
+  setStoreSwapAnimating: (animating: boolean) => void;
+  setPendingStoreView: (pending: boolean | null) => void;
+  toggleStoreView: () => void; // переключает между глобальным и личным
 
   _bootDone: boolean;
   initFromUrl: () => void;
@@ -205,8 +170,11 @@ type AppState = {
 
   uploadBeat: (payload: UploadPayload) => Promise<void>;
 
-  /** обновление ника с ПОЛНОЙ персистенцией и обновлением автора в битах */
-  updateNickname: (next: string) => void;
+  /** обновление ника (сохраняет в БД) */
+  updateNickname: (next: string) => Promise<void>;
+
+  /** обновление цен лицензий для конкретного бита (сохраняет в БД) */
+  updateBeatPrices: (beatId: string, prices: Prices) => Promise<void>;
 
   /** выбор роли для нового пользователя */
   selectRole: (role: "producer" | "artist") => void;
@@ -215,30 +183,17 @@ type AppState = {
   changeRole: (role: "producer") => void;
 };
 
-const mockMe: Seller = {
-  id: "me-1",
-  slug: "howly",
-  storeName: "Howly",
-  plan: "free" as Plan,
-};
-
 export const useApp = create<AppState>((set, get) => {
   try {
     OLD_KEYS.forEach((k) => localStorage.removeItem(k));
   } catch {}
 
-  // загрузим профиль из LS (если есть)
-  const prof = loadProfileFromLS({
-    id: mockMe.id,
-    slug: mockMe.slug,
-    storeName: mockMe.storeName,
-    plan: mockMe.plan,
-  });
+  // Временные данные до загрузки из БД
   const initialMe: Seller = {
-    id: prof.id,
-    slug: prof.slug,
-    storeName: prof.storeName,
-    plan: prof.plan,
+    id: telegramData.telegramId ? `user:${telegramData.telegramId}` : "temp-user",
+    slug: telegramData.username || "user",
+    storeName: telegramData.username || "User",
+    plan: "free" as Plan,
   };
 
   audio.addEventListener("timeupdate", () =>
@@ -265,7 +220,7 @@ export const useApp = create<AppState>((set, get) => {
   }
 
   return {
-    beats: loadBeatsFromLS(),
+    beats: [], // Биты загружаются из БД в bootstrap()
     seller: initialMe,
     me: initialMe,
     session: initialSession,
@@ -281,25 +236,60 @@ export const useApp = create<AppState>((set, get) => {
     volume: 0.8,
 
     cart: [],
+
+    // Дефолтные лицензии (будут загружены из БД)
+    licenses: [
+      { id: "mp3", name: "MP3", defaultPrice: null },
+      { id: "wav", name: "WAV", defaultPrice: null },
+      { id: "stems", name: "STEMS", defaultPrice: null },
+    ],
+
     playerCollapsed: false,
+    viewingGlobalStore: false, // по умолчанию личный битстор
+    storeSwapAnimating: false,
+    pendingStoreView: null,
     _bootDone: false,
 
-    initFromUrl() {
+    async initFromUrl() {
       const url = new URL(window.location.href);
       const mode = url.searchParams.get("mode");
       const sellerParam = url.searchParams.get("seller");
       if (mode === "link" && sellerParam) {
-        const foreign: Seller = {
-          id: `seller:${sellerParam}`,
-          slug: sellerParam,
-          storeName: sellerParam,
-          plan: "free" as Plan,
-        };
-        set({
-          session: { role: "artist", isNewUser: get().session.isNewUser },
-          seller: foreign,
-          viewingOwnerId: foreign.id,
-        });
+        // Загружаем данные продюсера по username из БД
+        try {
+          const response = await fetch(`${API_BASE}/api/users/byUsername/${sellerParam}`);
+          if (response.ok) {
+            const data = await response.json();
+            const foreignSeller: Seller = {
+              id: `user:${data.user.telegram_id}`,
+              slug: data.user.username,
+              storeName: data.user.store_name || data.user.username,
+              plan: data.user.plan || "free",
+            };
+            set({
+              session: { role: "artist", isNewUser: get().session.isNewUser },
+              seller: foreignSeller,
+              viewingOwnerId: foreignSeller.id,
+            });
+            console.log("✅ Загружен продюсер из БД:", foreignSeller);
+          } else {
+            // Fallback если продюсер не найден
+            const foreign: Seller = {
+              id: `seller:${sellerParam}`,
+              slug: sellerParam,
+              storeName: sellerParam,
+              plan: "free" as Plan,
+            };
+            set({
+              session: { role: "artist", isNewUser: get().session.isNewUser },
+              seller: foreign,
+              viewingOwnerId: foreign.id,
+            });
+            console.warn("⚠️ Продюсер не найден в БД, используем временные данные");
+          }
+        } catch (e) {
+          console.error("❌ Ошибка загрузки данных продюсера:", e);
+        }
       } else {
         // используем профиль из LS
         set({
@@ -313,6 +303,7 @@ export const useApp = create<AppState>((set, get) => {
     async bootstrap() {
       if (get()._bootDone) return;
       try {
+        console.log("📦 Загружаем биты из БД...");
         const res = await fetch(`${API_BASE}/api/beats`);
         const data = await res.json();
         const rawBeats: Beat[] = Array.isArray(data)
@@ -324,20 +315,45 @@ export const useApp = create<AppState>((set, get) => {
               : [];
         const beats = rawBeats.map(normalizeBeat);
         set({ beats, _bootDone: true });
-        saveBeatsToLS(beats);
-      } catch {
-        const ls = loadBeatsFromLS();
-        set({ beats: ls, _bootDone: true });
+        console.log(`✅ Загружено ${beats.length} битов из БД`);
+      } catch (e) {
+        console.error("❌ Ошибка загрузки битов из БД:", e);
+        set({ beats: [], _bootDone: true });
       }
     },
 
     isOwnStore() {
       return get().viewingOwnerId === get().me.id;
     },
-    goToOwnStore() {
+    async goToOwnStore() {
+      // Устанавливаем ник из Telegram, если он пустой (ограничение 15 символов)
+      const currentMe = get().me;
+      if (!currentMe.storeName || currentMe.storeName === "Howly") {
+        const telegramUsername = telegramData.username || "Producer";
+        const truncatedUsername = telegramUsername.slice(0, 15);
+        const updatedMe: Seller = { ...currentMe, storeName: truncatedUsername };
+        set({ me: updatedMe, seller: updatedMe });
+        console.log("✅ Установлен ник из Telegram:", truncatedUsername);
+
+        // Сохраняем в БД
+        const telegramId = get().telegramId;
+        if (telegramId) {
+          try {
+            await fetch(`${API_BASE}/api/users/${telegramId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ storeName: truncatedUsername }),
+            });
+            console.log("✅ Ник сохранен в БД");
+          } catch (e) {
+            console.error("❌ Ошибка при сохранении ника в БД:", e);
+          }
+        }
+      }
+
       const newSession: Session = {
         role: "producer",
-        isNewUser: get().session.isNewUser  // ✅ Сохраняем флаг
+        isNewUser: false
       };
       set({
         session: newSession,
@@ -345,6 +361,21 @@ export const useApp = create<AppState>((set, get) => {
         viewingOwnerId: get().me.id,
       });
       saveSessionToLS(newSession);  // ✅ Персистим в localStorage
+
+      // Обновляем роль в БД
+      const telegramId = get().telegramId;
+      if (telegramId) {
+        try {
+          await fetch(`${API_BASE}/api/users/${telegramId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role: "producer" }),
+          });
+          console.log("✅ Роль обновлена в БД: producer");
+        } catch (e) {
+          console.error("❌ Ошибка при обновлении роли в БД:", e);
+        }
+      }
 
       const url = new URL(window.location.href);
       url.searchParams.delete("mode");
@@ -449,6 +480,19 @@ export const useApp = create<AppState>((set, get) => {
       set((state) => ({ playerCollapsed: !state.playerCollapsed }));
     },
 
+    setViewingGlobalStore(viewing) {
+      set({ viewingGlobalStore: viewing });
+    },
+    setStoreSwapAnimating(animating) {
+      set({ storeSwapAnimating: animating });
+    },
+    setPendingStoreView(pending) {
+      set({ pendingStoreView: pending });
+    },
+    toggleStoreView() {
+      set((state) => ({ viewingGlobalStore: !state.viewingGlobalStore }));
+    },
+
     /* === КОРЗИНА === */
     addToCart(beatId, license) {
       const exists = get().cart.some(
@@ -500,18 +544,18 @@ export const useApp = create<AppState>((set, get) => {
       } as Beat);
       const next = [newBeat, ...get().beats];
       set({ beats: next });
-      saveBeatsToLS(next);
+      console.log("✅ Бит добавлен:", newBeat.title);
     },
 
-    /* === ПРОФИЛЬ: смена ника с персистом и апдейтом авторов === */
-    updateNickname(nextName: string) {
-      const name = nextName.trim();
+    /* === ПРОФИЛЬ: смена ника (сохраняет в БД) === */
+    async updateNickname(nextName: string) {
+      const name = nextName.trim().slice(0, 15); // ✅ Ограничение 15 символов
       if (!name) return;
 
       const mePrev = get().me;
       const meNext: Seller = { ...mePrev, storeName: name };
 
-      // 1) обновим me, seller
+      // 1) обновим me, seller локально
       set((state) => {
         const nextSeller =
           state.viewingOwnerId === mePrev.id
@@ -520,15 +564,7 @@ export const useApp = create<AppState>((set, get) => {
         return { me: meNext, seller: nextSeller };
       });
 
-      // 2) персистим профиль
-      saveProfileToLS({
-        id: meNext.id,
-        slug: meNext.slug,
-        storeName: meNext.storeName,
-        plan: meNext.plan,
-      });
-
-      // 3) обновим автора в локальных битах (если автор совпадает с нами)
+      // 2) обновим автора в локальных битах (если автор совпадает с нами)
       const updatedBeats = get().beats.map((b) => {
         const anyBeat: any = { ...b };
         if (
@@ -541,7 +577,135 @@ export const useApp = create<AppState>((set, get) => {
         return anyBeat as Beat;
       });
       set({ beats: updatedBeats });
-      saveBeatsToLS(updatedBeats);
+
+      // 3) сохраняем в БД
+      const telegramId = get().telegramId;
+      if (telegramId) {
+        try {
+          await fetch(`${API_BASE}/api/users/${telegramId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storeName: name }),
+          });
+          console.log("✅ Ник обновлен в БД:", name);
+        } catch (e) {
+          console.error("❌ Ошибка при обновлении ника в БД:", e);
+        }
+      }
+    },
+
+    /* === УПРАВЛЕНИЕ ЛИЦЕНЗИЯМИ === */
+    async loadLicenses() {
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}/licenses`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.licenses && Array.isArray(data.licenses)) {
+            set({ licenses: data.licenses });
+            console.log("✅ Лицензии загружены из БД:", data.licenses);
+          }
+        }
+      } catch (e) {
+        console.error("❌ Ошибка загрузки лицензий из БД:", e);
+      }
+    },
+
+    async updateLicense(licenseId: string, updates: Partial<License>) {
+      // Обновляем локально
+      const updatedLicenses = get().licenses.map((lic) =>
+        lic.id === licenseId ? { ...lic, ...updates } : lic
+      );
+      set({ licenses: updatedLicenses });
+
+      // Сохраняем в БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/licenses`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ licenses: updatedLicenses }),
+        });
+        console.log("✅ Лицензии обновлены в БД");
+      } catch (e) {
+        console.error("❌ Ошибка обновления лицензий в БД:", e);
+      }
+    },
+
+    async addLicense(license: Omit<License, "id">) {
+      const newLicense: License = {
+        ...license,
+        id: `custom_${Date.now()}`,
+      };
+
+      const updatedLicenses = [...get().licenses, newLicense];
+      set({ licenses: updatedLicenses });
+
+      // Сохраняем в БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/licenses`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ licenses: updatedLicenses }),
+        });
+        console.log("✅ Новая лицензия добавлена в БД:", newLicense);
+      } catch (e) {
+        console.error("❌ Ошибка добавления лицензии в БД:", e);
+      }
+    },
+
+    async deleteLicense(licenseId: string) {
+      const updatedLicenses = get().licenses.filter((l) => l.id !== licenseId);
+      set({ licenses: updatedLicenses });
+
+      // Сохраняем в БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/licenses`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ licenses: updatedLicenses }),
+        });
+        console.log("✅ Лицензия удалена из БД");
+      } catch (e) {
+        console.error("❌ Ошибка удаления лицензии из БД:", e);
+      }
+    },
+
+    async updateBeatPrices(beatId: string, prices: Prices) {
+      // Обновляем локально
+      const updatedBeats = get().beats.map((b) =>
+        b.id === beatId ? { ...b, prices } : b
+      );
+      set({ beats: updatedBeats });
+
+      // Отправляем в БД
+      try {
+        const response = await fetch(`${API_BASE}/api/beats/${beatId}/prices`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prices }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to update prices in database");
+        }
+
+        console.log(`✅ Цены обновлены в БД для бита ${beatId}:`, prices);
+      } catch (e) {
+        console.error("❌ Ошибка при обновлении цен в БД:", e);
+        // В случае ошибки откатываем изменения
+        set({ beats: get().beats });
+      }
     },
 
     /* === РОЛИ === */
@@ -643,40 +807,60 @@ export const useApp = create<AppState>((set, get) => {
         console.log("📡 Ответ от сервера:", response.status, response.statusText);
 
         if (response.status === 404) {
-          // Пользователя НЕТ в БД - создаём БЕЗ роли (role = NULL)
-          console.log("👋 Пользователь не найден в БД, создаём с пустой ролью...");
+          // Пользователя НЕТ в БД - создаём сразу как АРТИСТА
+          console.log("👋 Пользователь не найден в БД, создаём как артиста...");
           const createResponse = await fetch(`${API_BASE}/api/users`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               telegram_id: telegramData.telegramId,
               username: telegramData.username,
-              // role не передаём - будет NULL в БД
+              role: "artist", // ✅ Автоматически создаём как артиста
             }),
           });
           const createData = await createResponse.json();
-          console.log("✅ Пользователь создан с role=NULL:", createData);
+          console.log("✅ Пользователь создан с role=artist:", createData);
 
-          // Устанавливаем сессию для нового пользователя - покажется модалка
-          const newUserSession: Session = { role: "artist", isNewUser: true };
+          // Устанавливаем сессию для нового артиста
+          const newUserSession: Session = { role: "artist", isNewUser: false };
           useApp.setState({ session: newUserSession, userInitialized: true });
           saveSessionToLS(newUserSession);
-          console.log("🎭 Установлена сессия для нового пользователя (isNewUser=true)");
+          console.log("🎭 Установлена сессия для нового пользователя (артист)");
+
+          // Загружаем лицензии
+          useApp.getState().loadLicenses();
 
         } else if (response.ok) {
-          // Пользователь СУЩЕСТВУЕТ - загружаем его роль из БД
+          // Пользователь СУЩЕСТВУЕТ - загружаем ВСЕ данные из БД
           const data = await response.json();
           console.log("✅ Пользователь найден в БД:", data.user);
           if (data.user) {
-            // Если role === null → показываем модалку
-            const hasRole = data.user.role !== null;
+            // Обновляем данные пользователя из БД
+            const userFromDB: Seller = {
+              id: `user:${data.user.telegram_id}`,
+              slug: data.user.username || telegramData.username || "user",
+              storeName: data.user.store_name || data.user.username || telegramData.username || "User",
+              plan: data.user.plan || "free",
+            };
+
             const existingUserSession: Session = {
               role: data.user.role || "artist", // фоллбэк если null
-              isNewUser: !hasRole, // если role === null → isNewUser = true
+              isNewUser: false,
             };
-            useApp.setState({ session: existingUserSession, userInitialized: true });
+
+            useApp.setState({
+              me: userFromDB,
+              seller: userFromDB,
+              session: existingUserSession,
+              userInitialized: true
+            });
             saveSessionToLS(existingUserSession);
-            console.log("🔄 Загружена сессия:", existingUserSession, "hasRole:", hasRole);
+            console.log("🔄 Загружены данные пользователя из БД:", userFromDB);
+
+            // Загружаем лицензии для продюсера
+            if (existingUserSession.role === "producer") {
+              useApp.getState().loadLicenses();
+            }
           } else {
             console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
             useApp.setState({ userInitialized: true });

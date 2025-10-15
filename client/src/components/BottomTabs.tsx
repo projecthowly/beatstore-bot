@@ -19,6 +19,8 @@ export default function BottomTabs() {
     playerCollapsed,
     togglePlayerCollapsed,
     playingBeatId,
+    viewingGlobalStore,
+    storeSwapAnimating,
   } = useApp();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,7 @@ export default function BottomTabs() {
   const isCartPage = loc.pathname === "/cart";
   const wasCartPage = useRef(false);
 
+
   // Определяем индекс активного таба
   const getActiveIndex = () => {
     if (isArtist) {
@@ -43,8 +46,8 @@ export default function BottomTabs() {
       if (isActive("/account")) return 1;
       return 0;
     }
-    // Для продюсера: Beatstore (0), Analytics (1 опционально), Account (2 или 1)
-    if (isActive("/")) return 0;
+    // Для продюсера: Beatstore/Market (0), Analytics (1 опционально), Account (2 или 1)
+    if (isActive("/") || isActive("/market")) return 0;
     if (isActive("/analytics")) return 1;
     if (isActive("/account")) return showAnalytics ? 2 : 1;
     return 0;
@@ -90,6 +93,16 @@ export default function BottomTabs() {
     }
     wasCartPage.current = isCartPage;
   }, [isCartPage]);
+
+  // Отслеживаем завершение анимации переключения для запуска springBounce
+  const wasAnimating = useRef(false);
+  useEffect(() => {
+    if (wasAnimating.current && !storeSwapAnimating) {
+      // Когда анимация завершается (storeSwapAnimating: true -> false), запускаем springBounce
+      setAnimationKey(prev => prev + 1);
+    }
+    wasAnimating.current = storeSwapAnimating;
+  }, [storeSwapAnimating]);
 
   return (
     <GlassBar
@@ -152,14 +165,14 @@ export default function BottomTabs() {
               background: "linear-gradient(90deg, #6E6BFF, #2EA1FF)",
               borderRadius: "19px",
               transition: "left 0.35s cubic-bezier(0.25, 1.7, 0.35, 0.8), opacity 0.15s ease, transform 0.15s ease",
-              animation: !isCartPage && animationKey > 0 ? "springBounce 0.8s ease-out" : "none",
+              animation: !isCartPage && !storeSwapAnimating && animationKey > 0 ? "springBounce 0.8s ease-out" : "none",
               left: `${indicatorLeft}px`,
               top: "12px",
-              transform: isCartPage ? "translate(-50%, 0) scale(0)" : "translate(-50%, 0) scale(1)",
+              transform: (isCartPage || storeSwapAnimating) ? "translate(-50%, 0) scale(0)" : "translate(-50%, 0) scale(1)",
               transformOrigin: "center center",
               marginLeft: "45px",
               boxShadow: "0 4px 20px rgba(110, 107, 255, 0.4)",
-              opacity: isCartPage ? 0 : 1,
+              opacity: (isCartPage || storeSwapAnimating) ? 0 : 1,
               zIndex: 0,
             }}
           />
@@ -186,9 +199,13 @@ export default function BottomTabs() {
             <>
               <Tab
                 ref={(el) => { tabRefs.current[0] = el; }}
-                icon={beatstoreIcon}
-                active={isActive("/")}
-                onClick={() => nav("/")}
+                icon={viewingGlobalStore ? marketIcon : beatstoreIcon}
+                active={isActive("/") || isActive("/market")}
+                onClick={() => {
+                  // Нижняя кнопка просто возвращает на текущий битстор (не переключает между ними)
+                  nav(viewingGlobalStore ? "/market" : "/");
+                }}
+                animating={storeSwapAnimating}
               />
               {showAnalytics && (
                 <Tab
@@ -218,8 +235,9 @@ const Tab = React.forwardRef<
     icon: string;
     active: boolean;
     onClick: () => void;
+    animating?: boolean;
   }
->(({ icon, active, onClick }, ref) => {
+>(({ icon, active, onClick, animating = false }, ref) => {
   return (
     <Box
       ref={ref}
@@ -232,8 +250,8 @@ const Tab = React.forwardRef<
         cursor: "pointer",
         position: "relative",
         zIndex: 1,
-        transition: "all 0.3s ease",
-        opacity: active ? 1 : 0.55,
+        transition: animating ? "opacity 0.15s ease" : "all 0.3s ease",
+        opacity: animating ? 0 : (active ? 1 : 0.55),
       }}
     >
       <Icon

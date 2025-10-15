@@ -156,6 +156,30 @@ textarea:-ms-input-placeholder {
   }
 }
 
+/* Анимация выезда контента вниз */
+@keyframes slideOutDown {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+/* Анимация появления контента сверху */
+@keyframes slideInFromTop {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* адаптивность для мобильных устройств */
 
 /* Маленькие телефоны (до 360px) */

@@ -1,4 +1,4 @@
-export type Plan = 'free' | 'basic' | 'advanced';
+export type Plan = 'free' | 'basic' | 'pro';
 export type LicenseType = 'mp3' | 'wav' | 'stems';
 
 export type Seller = {
@@ -27,9 +27,7 @@ export type Beat = {
   };
 
   prices: {
-    mp3: number | null;
-    wav: number | null;
-    stems: number | null;
+    [licenseId: string]: number | null;
   };
 
   /** опциональный автор, если сервер его присылает */

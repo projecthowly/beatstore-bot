@@ -5,34 +5,31 @@ import { Box, Container } from "@mantine/core";
 
 import TopBar from "./components/TopBar";
 import BottomTabs from "./components/BottomTabs";
-import { RoleSelectionModal } from "./components/RoleSelectionModal";
 
 import CatalogView from "./views/CatalogView";
 import BeatPage from "./views/BeatPage";
 import CartPage from "./views/CartPage";
 import AccountView from "./views/AccountView";
 import AnalyticsView from "./views/AnalyticsView";
+import LicensesView from "./views/LicensesView";
 import { GlobalMarketView } from "./views/GlobalMarketView";
 
 import { useApp } from "./store";
 
 export default function App() {
-  const { initFromUrl, session, selectRole, userInitialized } = useApp();
+  const { initFromUrl, userInitialized, session } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
     initFromUrl();
   }, [initFromUrl]);
 
-  // Обработка выбора роли и редирект на соответствующую страницу
-  const handleRoleSelect = (role: "producer" | "artist") => {
-    selectRole(role);
-    if (role === "artist") {
-      navigate("/market");
-    } else {
-      navigate("/");
+  // Редирект артиста на /market при первом входе
+  useEffect(() => {
+    if (userInitialized && session.role === "artist" && window.location.pathname === "/") {
+      navigate("/market", { replace: true });
     }
-  };
+  }, [userInitialized, session.role, navigate]);
 
   // Показываем загрузку пока идёт проверка/создание пользователя
   if (!userInitialized) {
@@ -56,12 +53,6 @@ export default function App() {
 
   return (
     <>
-      {/* Модальное окно выбора роли для новых пользователей */}
-      <RoleSelectionModal
-        opened={session.isNewUser === true}
-        onSelectRole={handleRoleSelect}
-      />
-
       <Box
         style={{
           height: "100dvh",
@@ -95,6 +86,7 @@ export default function App() {
               <Route path="/cart" element={<CartPage />} />
               <Route path="/account" element={<AccountView />} />
               <Route path="/analytics" element={<AnalyticsView />} />
+              <Route path="/licenses" element={<LicensesView />} />
               <Route path="/market" element={<GlobalMarketView />} />
             </Routes>
           </Container>
