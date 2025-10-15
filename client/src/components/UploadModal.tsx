@@ -496,7 +496,6 @@ export default function UploadModal({ opened, onClose }: Props) {
                   <Select
                     size="sm"
                     label="Тональность *"
-                    placeholder="Выберите тональность"
                     searchable
                     data={[
                       "Am",
@@ -575,15 +574,18 @@ export default function UploadModal({ opened, onClose }: Props) {
                   <NumberInput
                     size="sm"
                     label="BPM *"
-                    placeholder="30-999"
                     value={bpm}
                     onChange={(value) => {
                       if (value === "") {
                         setBpm("");
                       } else {
-                        const num = Number(value);
-                        if (num >= 0 && num <= 999) {
-                          setBpm(num);
+                        const strValue = String(value);
+                        // Строго ограничиваем до 3 цифр
+                        if (strValue.length <= 3) {
+                          const num = Number(strValue);
+                          if (num >= 0 && num <= 999) {
+                            setBpm(num);
+                          }
                         }
                       }
                     }}
@@ -777,59 +779,62 @@ function FileDropzoneRow({
       </Group>
 
       {/* Dropzone или файл */}
-      {file ? (
-        <Box
-          style={{
-            width: "100%",
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(110,107,255,0.08)",
-            borderRadius: rem(10),
-            padding: `${rem(10)} ${rem(12)}`,
-            fontFamily: FONT_FAMILY,
-            transition: "all 250ms ease",
-          }}
-        >
-          <Group justify="space-between" wrap="nowrap">
-            <Text
-              fz="sm"
-              fw={500}
-              c="var(--text)"
-              style={{
-                fontFamily: FONT_FAMILY,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {file.name}
-            </Text>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              onClick={onRemove}
-              color="red"
-              styles={{
-                root: {
+      <Box
+        style={{
+          width: "100%",
+          minHeight: rem(56),
+        }}
+      >
+        {file ? (
+          <Box
+            style={{
+              width: "100%",
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(110,107,255,0.08)",
+              borderRadius: rem(10),
+              padding: `${rem(10)} ${rem(12)}`,
+              fontFamily: FONT_FAMILY,
+              transition: "all 250ms ease",
+              minHeight: rem(56),
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Group justify="space-between" wrap="nowrap" style={{ width: "100%" }}>
+              <Text
+                fz="sm"
+                fw={500}
+                c="var(--text)"
+                style={{
                   fontFamily: FONT_FAMILY,
-                  fontWeight: FONT_WEIGHT,
-                  flexShrink: 0,
-                  "&:hover": {
-                    background: "rgba(255,107,107,0.15)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {file.name}
+              </Text>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                onClick={onRemove}
+                color="red"
+                styles={{
+                  root: {
+                    fontFamily: FONT_FAMILY,
+                    fontWeight: FONT_WEIGHT,
+                    flexShrink: 0,
+                    "&:hover": {
+                      background: "rgba(255,107,107,0.15)",
+                    },
                   },
-                },
-              }}
-            >
-              <IconX size={14} />
-            </Button>
-          </Group>
-        </Box>
-      ) : (
-        <Box
-          style={{
-            width: "100%",
-            minHeight: rem(56),
-          }}
-        >
+                }}
+              >
+                <IconX size={14} />
+              </Button>
+            </Group>
+          </Box>
+        ) : (
           <Dropzone
             onDrop={(files) => {
               if (files.length > 0) {
@@ -877,8 +882,8 @@ function FileDropzoneRow({
               Нажмите для выбора файла
             </Text>
           </Dropzone>
-        </Box>
-      )}
+        )}
+      </Box>
     </Stack>
   );
 }
