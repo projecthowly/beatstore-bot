@@ -12,7 +12,7 @@ import type { Telegraf } from "telegraf";
 
 // Database
 import * as db from "./database.js";
-import { testConnection } from "./db.js";
+import { testConnection, pool } from "./db.js";
 
 // S3 Storage
 import { uploadToS3, getMimeType, generateS3Key } from "./s3.js";
@@ -264,7 +264,7 @@ app.get("/api/users/:telegramId/licenses", async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    const result = await db.query(
+    const result = await pool.query(
       "SELECT license_key, license_name, default_price FROM user_license_settings WHERE user_id = $1",
       [user.id]
     );
@@ -304,11 +304,11 @@ app.patch("/api/users/:telegramId/licenses", async (req, res) => {
     }
 
     // Удаляем старые настройки
-    await db.query("DELETE FROM user_license_settings WHERE user_id = $1", [user.id]);
+    await pool.query("DELETE FROM user_license_settings WHERE user_id = $1", [user.id]);
 
     // Вставляем новые
     for (const lic of licenses) {
-      await db.query(
+      await pool.query(
         `INSERT INTO user_license_settings (user_id, license_key, license_name, default_price)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (user_id, license_key)
