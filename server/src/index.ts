@@ -410,7 +410,11 @@ app.post(
       console.log(`📤 Immediate upload: ${file.originalname} (${fileType})`);
 
       // Определяем папку по типу файла
-      const folder = fileType === "cover" ? "covers" : "audio";
+      let folder = "audio"; // по умолчанию
+      if (fileType === "cover") folder = "covers";
+      else if (fileType === "mp3") folder = "audio/mp3";
+      else if (fileType === "wav") folder = "audio/wav";
+      else if (fileType === "stems") folder = "stems";
 
       // Загружаем на S3
       const url = await uploadToS3(
