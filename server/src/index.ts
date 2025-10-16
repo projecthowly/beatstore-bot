@@ -472,9 +472,9 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    // Создаём бит в БД
+    // Создаём бит в БД (key - зарезервированное слово, экранируем кавычками)
     const beatResult = await pool.query(
-      `INSERT INTO beats (user_id, title, bpm, key, cover_file_path, mp3_file_path, wav_file_path, stems_file_path)
+      `INSERT INTO beats (user_id, title, bpm, "key", cover_file_path, mp3_file_path, wav_file_path, stems_file_path)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [user.id, title, bpm, beatKey, coverUrl, mp3Url, wavUrl, stemsUrl || null]
@@ -483,22 +483,33 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
     const beatId = beatResult.rows[0].id;
 
     // Сохраняем цены лицензий
+    // license_key (basic/premium) → находим глобальную лицензию по имени
     for (const [licenseKey, price] of Object.entries(prices)) {
       if (price && typeof price === "number") {
-        // Получаем license_id из user_license_settings
-        const licenseResult = await pool.query(
-          "SELECT id FROM licenses WHERE key = $1 LIMIT 1",
-          [licenseKey]
+        // Проверяем что у пользователя есть эта лицензия в настройках
+        const userLicenseCheck = await pool.query(
+          "SELECT license_name FROM user_license_settings WHERE user_id = $1 AND license_key = $2 LIMIT 1",
+          [user.id, licenseKey]
         );
 
-        if (licenseResult.rows.length > 0) {
-          const licenseId = licenseResult.rows[0].id;
-          await pool.query(
-            `INSERT INTO beat_licenses (beat_id, license_id, price)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (beat_id, license_id) DO UPDATE SET price = $3`,
-            [beatId, licenseId, price]
+        if (userLicenseCheck.rows.length > 0) {
+          const licenseName = userLicenseCheck.rows[0].license_name;
+
+          // Находим глобальную лицензию по имени
+          const globalLicenseResult = await pool.query(
+            "SELECT id FROM licenses WHERE name = $1 AND is_global = true LIMIT 1",
+            [licenseName]
           );
+
+          if (globalLicenseResult.rows.length > 0) {
+            const globalLicenseId = globalLicenseResult.rows[0].id;
+            await pool.query(
+              `INSERT INTO beat_licenses (beat_id, license_id, price)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (beat_id, license_id) DO UPDATE SET price = $3`,
+              [beatId, globalLicenseId, price]
+            );
+          }
         }
       }
     }
