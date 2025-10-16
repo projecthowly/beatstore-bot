@@ -4,13 +4,13 @@ import fs from "fs";
 import path from "path";
 
 /**
- * S3 клиент для Selectel Cloud Storage
- * Endpoint: https://s3.ru-7.storage.selcloud.ru
- * Region: ru-1
+ * S3 клиент для Yandex Object Storage
+ * Endpoint: https://storage.yandexcloud.net
+ * Region: ru-central1
  */
 const s3Client = new S3Client({
-  region: process.env.S3_REGION || "ru-1",
-  endpoint: process.env.S3_ENDPOINT || "https://s3.ru-7.storage.selcloud.ru",
+  region: process.env.S3_REGION || "ru-central1",
+  endpoint: process.env.S3_ENDPOINT || "https://storage.yandexcloud.net",
   credentials: {
     accessKeyId: process.env.S3_ACCESS_KEY || "",
     secretAccessKey: process.env.S3_SECRET_KEY || "",
@@ -61,8 +61,8 @@ export async function uploadToS3(
 
     await upload.done();
 
-    // Формируем публичный URL (vHosted-style)
-    const publicUrl = `https://${bucketName}.s3.ru-7.storage.selcloud.ru/${s3Key}`;
+    // Формируем публичный URL (Yandex Object Storage)
+    const publicUrl = `https://storage.yandexcloud.net/${bucketName}/${s3Key}`;
     console.log(`✅ Uploaded to S3: ${publicUrl}`);
 
     return publicUrl;
@@ -101,7 +101,7 @@ export async function uploadBufferToS3(
 
     await s3Client.send(command);
 
-    const publicUrl = `https://${bucketName}.s3.ru-7.storage.selcloud.ru/${s3Key}`;
+    const publicUrl = `https://storage.yandexcloud.net/${bucketName}/${s3Key}`;
     console.log(`✅ Uploaded buffer to S3: ${publicUrl}`);
 
     return publicUrl;
