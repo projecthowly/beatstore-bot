@@ -350,7 +350,7 @@ app.get("/api/beats", async (req, res) => {
         b.created_at,
         u.id as author_id,
         u.username as author_name,
-        u.slug as author_slug,
+        u.telegram_id as author_telegram_id,
         json_agg(
           json_build_object(
             'licenseKey', bl.license_id::text,
@@ -380,9 +380,9 @@ app.get("/api/beats", async (req, res) => {
         return acc;
       }, {}),
       author: row.author_id ? {
-        id: `user:${row.author_id}`,
+        id: `user:${row.author_telegram_id}`,
         name: row.author_name || "Unknown",
-        slug: row.author_slug,
+        slug: row.author_name?.toLowerCase().replace(/\s+/g, "-") || "unknown",
       } : null,
     }));
 
@@ -539,6 +539,9 @@ const server = app.listen(PORT, async () => {
   console.log(`\n🌐 HTTP:        http://localhost:${PORT}`);
   console.log(`📁 TEMP_DIR:    ${TEMP_DIR}`);
   console.log(`💾 Storage:     PostgreSQL + S3\n`);
+
+  // Создаём временную директорию
+  await ensureDirs();
 
   // Проверяем подключение к БД
   console.log("🔌 Проверка подключения к PostgreSQL...");
