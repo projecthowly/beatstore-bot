@@ -28,44 +28,21 @@ const DEPLOY_TOKEN = process.env.DEPLOY_TOKEN || "";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* ===================== Пути (uploads в КОРНЕ) ===================== */
+/* ===================== Пути для временных файлов ===================== */
 const ROOT = path.resolve(__dirname, "..", "..");   // корень репозитория
-const DATA_DIR = path.join(ROOT, "uploads");        // <repo>/uploads
-const BEATS_JSON = path.join(DATA_DIR, "beats.json");
-
-const DIR_COVERS = path.join(DATA_DIR, "covers");
-const DIR_AUDIO  = path.join(DATA_DIR, "audio");
-const DIR_STEMS  = path.join(DATA_DIR, "stems");
+const TEMP_DIR = path.join(ROOT, "temp");          // временные файлы для multer
 
 /* ===================== FS helpers ===================== */
 async function ensureDirs() {
-  await fs.mkdir(DIR_COVERS, { recursive: true });
-  await fs.mkdir(DIR_AUDIO,  { recursive: true });
-  await fs.mkdir(DIR_STEMS,  { recursive: true });
-  try {
-    await fs.access(BEATS_JSON).catch(async () => {
-      await fs.writeFile(BEATS_JSON, "[]", "utf8");
-    });
-  } catch {}
-}
-function fullUrlFrom(req: express.Request, rel: string) {
-  if (!rel) return "";
-  if (rel.startsWith("http://") || rel.startsWith("https://")) return rel;
-  const base = `${req.protocol}://${req.get("host")}`;
-  return `${base}${rel.startsWith("/") ? "" : "/"}${rel}`;
+  // Создаём только temp директорию для временных загрузок
+  await fs.mkdir(TEMP_DIR, { recursive: true });
 }
 
 /* ===================== Multer (upload) ===================== */
 const storage = multer.diskStorage({
-  destination: (_req, file, cb) => {
-    try {
-      if (file.fieldname === "cover") return cb(null, DIR_COVERS);
-      if (file.fieldname === "mp3" || file.fieldname === "wav") return cb(null, DIR_AUDIO);
-      if (file.fieldname === "stems") return cb(null, DIR_STEMS);
-      return cb(null, DATA_DIR);
-    } catch (e) {
-      return cb(e as any, DATA_DIR);
-    }
+  destination: (_req, _file, cb) => {
+    // Все файлы временно складываются в TEMP_DIR перед загрузкой на S3
+    cb(null, TEMP_DIR);
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || "";
@@ -84,9 +61,6 @@ const corsOptions: CorsOptions = {
   credentials: false,
 };
 app.use(cors(corsOptions));
-
-// Раздаём ./uploads как статику (если используется локальное хранилище)
-app.use("/uploads", express.static(DATA_DIR));
 
 // Статика React клиента (client/dist)
 const CLIENT_DIST = path.join(ROOT, "client", "dist");
@@ -360,26 +334,56 @@ app.get("/api/users/:telegramId/purchases", async (req, res) => {
 /* ---------- GET /api/beats ---------- */
 app.get("/api/beats", async (req, res) => {
   try {
-    await ensureDirs();
+    // Получаем биты из PostgreSQL с данными автора и ценами на лицензии
+    const result = await pool.query(`
+      SELECT
+        b.id,
+        b.title,
+        b.bpm,
+        b.key,
+        b.cover_file_path as "coverUrl",
+        b.mp3_file_path as "mp3Url",
+        b.wav_file_path as "wavUrl",
+        b.stems_file_path as "stemsUrl",
+        b.views_count,
+        b.sales_count,
+        b.created_at,
+        u.id as author_id,
+        u.username as author_name,
+        u.slug as author_slug,
+        json_agg(
+          json_build_object(
+            'licenseKey', bl.license_id::text,
+            'price', bl.price
+          )
+        ) FILTER (WHERE bl.id IS NOT NULL) as licenses
+      FROM beats b
+      LEFT JOIN users u ON b.user_id = u.id
+      LEFT JOIN beat_licenses bl ON b.id = bl.beat_id
+      GROUP BY b.id, u.id
+      ORDER BY b.created_at DESC
+    `);
 
-    const raw = await fs.readFile(BEATS_JSON, "utf8").catch(() => "[]");
-    let beats: any = JSON.parse(raw);
-
-    if (beats && typeof beats === "object" && !Array.isArray(beats)) {
-      beats = beats.beats || beats.list || [];
-    }
-    if (!Array.isArray(beats)) beats = [];
-
-    // нормализуем относительные пути → абсолютные URL
-    beats = beats.map((b: any) => ({
-      ...b,
-      coverUrl: fullUrlFrom(req, b.coverUrl || b.cover || ""),
+    const beats = result.rows.map((row: any) => ({
+      id: `beat_${row.id}`,
+      title: row.title,
+      key: row.key,
+      bpm: row.bpm,
+      coverUrl: row.coverUrl,
       files: {
-        mp3:   fullUrlFrom(req, b?.files?.mp3   || b?.mp3   || ""),
-        wav:   fullUrlFrom(req, b?.files?.wav   || b?.wav   || ""),
-        stems: fullUrlFrom(req, b?.files?.stems || b?.stems || ""),
+        mp3: row.mp3Url,
+        wav: row.wavUrl,
+        stems: row.stemsUrl || "",
       },
-      // author — уже хранится, просто отдаём как есть
+      prices: (row.licenses || []).reduce((acc: any, lic: any) => {
+        acc[lic.licenseKey] = parseFloat(lic.price);
+        return acc;
+      }, {}),
+      author: row.author_id ? {
+        id: `user:${row.author_id}`,
+        name: row.author_name || "Unknown",
+        slug: row.author_slug,
+      } : null,
     }));
 
     res.json({ ok: true, beats });
@@ -427,80 +431,102 @@ app.post(
 );
 
 /* ---------- POST /api/beats/upload ---------- */
-app.post(
-  "/api/beats/upload",
-  upload.fields([
-    { name: "cover", maxCount: 1 },
-    { name: "mp3",   maxCount: 1 },
-    { name: "wav",   maxCount: 1 },
-    { name: "stems", maxCount: 1 },
-  ]),
-  async (req, res) => {
+app.post("/api/beats/upload", express.json(), async (req, res) => {
+  try {
+    const title = String(req.body?.title || "").trim();
+    const beatKey = String(req.body?.key || "").trim() || "Am";
+    const bpm = Number(req.body?.bpm || 0);
+
+    // Цены за лицензии
+    let prices = {};
     try {
-      await ensureDirs();
+      prices = typeof req.body?.prices === "string"
+        ? JSON.parse(req.body.prices)
+        : (req.body?.prices || {});
+    } catch (e) {
+      console.warn("⚠️ Не удалось распарсить prices:", e);
+    }
 
-      const title   = String(req.body?.title || "").trim();
-      const beatKey = String(req.body?.key   || "").trim() || "Am";
-      const bpm     = Number(req.body?.bpm   || 0);
+    // Автор (user_id из telegram_id)
+    const authorId = String(req.body?.authorId || "").trim();
 
-      // Цены за лицензии (парсим JSON строку)
-      let prices = {};
-      try {
-        prices = typeof req.body?.prices === "string"
-          ? JSON.parse(req.body.prices)
-          : (req.body?.prices || {});
-      } catch (e) {
-        console.warn("⚠️ Не удалось распарсить prices:", e);
+    // URL файлов (уже загружены через /api/upload-file)
+    const coverUrl = String(req.body?.coverUrl || "").trim();
+    const mp3Url = String(req.body?.mp3Url || "").trim();
+    const wavUrl = String(req.body?.wavUrl || "").trim();
+    const stemsUrl = String(req.body?.stemsUrl || "").trim();
+
+    if (!title || !bpm || !coverUrl || !mp3Url || !wavUrl || !authorId) {
+      return res.status(400).json({ ok: false, error: "required-missing" });
+    }
+
+    console.log(`✅ Creating beat "${title}" with pre-uploaded files`);
+
+    // Получаем user_id из authorId (формат: "user:781620101")
+    const telegramId = authorId.startsWith("user:")
+      ? parseInt(authorId.split(":")[1], 10)
+      : parseInt(authorId, 10);
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Создаём бит в БД
+    const beatResult = await pool.query(
+      `INSERT INTO beats (user_id, title, bpm, key, cover_file_path, mp3_file_path, wav_file_path, stems_file_path)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
+      [user.id, title, bpm, beatKey, coverUrl, mp3Url, wavUrl, stemsUrl || null]
+    );
+
+    const beatId = beatResult.rows[0].id;
+
+    // Сохраняем цены лицензий
+    for (const [licenseKey, price] of Object.entries(prices)) {
+      if (price && typeof price === "number") {
+        // Получаем license_id из user_license_settings
+        const licenseResult = await pool.query(
+          "SELECT id FROM licenses WHERE key = $1 LIMIT 1",
+          [licenseKey]
+        );
+
+        if (licenseResult.rows.length > 0) {
+          const licenseId = licenseResult.rows[0].id;
+          await pool.query(
+            `INSERT INTO beat_licenses (beat_id, license_id, price)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (beat_id, license_id) DO UPDATE SET price = $3`,
+            [beatId, licenseId, price]
+          );
+        }
       }
+    }
 
-      // Автор приходит с клиента
-      const authorId   = String(req.body?.authorId   || "").trim();
-      const authorName = String(req.body?.authorName || "").trim();
-      const authorSlug = String(req.body?.authorSlug || "").trim();
+    console.log(`✅ Beat "${title}" created successfully (ID: ${beatId})`);
 
-      // Получаем URL файлов (они уже загружены через /api/upload-file)
-      const coverUrl = String(req.body?.coverUrl || "").trim();
-      const mp3Url = String(req.body?.mp3Url || "").trim();
-      const wavUrl = String(req.body?.wavUrl || "").trim();
-      const stemsUrl = String(req.body?.stemsUrl || "").trim();
-
-      if (!title || !bpm || !coverUrl || !mp3Url || !wavUrl) {
-        return res.status(400).json({ ok: false, error: "required-missing" });
-      }
-
-      console.log(`✅ Creating beat "${title}" with pre-uploaded files`);
-
-      const raw = await fs.readFile(BEATS_JSON, "utf8").catch(() => "[]");
-      const list: any[] = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
-
-      const record = {
-        id: `beat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    res.json({
+      ok: true,
+      beat: {
+        id: `beat_${beatId}`,
         title,
         key: beatKey,
         bpm,
         coverUrl,
         files: { mp3: mp3Url, wav: wavUrl, stems: stemsUrl },
-        prices: prices, // ✅ Сохраняем цены из запроса
-
-        // сохраняем автора, если пришёл
-        author: authorId || authorName ? {
-          id: authorId || `seller:${authorSlug || authorName || "unknown"}`,
-          name: authorName || "Unknown",
-          slug: authorSlug || undefined,
-        } : null,
-      };
-
-      list.unshift(record);
-      await fs.writeFile(BEATS_JSON, JSON.stringify(list, null, 2), "utf8");
-
-      console.log(`✅ Beat "${title}" created successfully`);
-      res.json({ ok: true, beat: record });
-    } catch (e) {
-      console.error("POST /api/beats/upload error:", e);
-      res.status(500).json({ ok: false, error: "upload-failed" });
-    }
+        prices,
+        author: {
+          id: authorId,
+          name: user.username || "Unknown",
+          slug: user.username?.toLowerCase().replace(/\s+/g, "-") || "unknown",
+        },
+      },
+    });
+  } catch (e) {
+    console.error("POST /api/beats/upload error:", e);
+    res.status(500).json({ ok: false, error: "upload-failed" });
   }
-);
+});
 
 /* ---------- SPA Fallback для React Router ---------- */
 // Все неизвестные маршруты отдают index.html (должно быть в конце!)
@@ -511,14 +537,16 @@ app.get("*", (_req, res) => {
 /* ===================== Start HTTP ===================== */
 const server = app.listen(PORT, async () => {
   console.log(`\n🌐 HTTP:        http://localhost:${PORT}`);
-  console.log(`📁 DATA_DIR:    ${DATA_DIR}`);
-  console.log(`📄 BEATS_JSON:  ${BEATS_JSON}\n`);
+  console.log(`📁 TEMP_DIR:    ${TEMP_DIR}`);
+  console.log(`💾 Storage:     PostgreSQL + S3\n`);
 
   // Проверяем подключение к БД
   console.log("🔌 Проверка подключения к PostgreSQL...");
   const dbConnected = await testConnection();
   if (!dbConnected) {
     console.log("⚠️  ВНИМАНИЕ: База данных недоступна! Проверьте настройки в .env");
+  } else {
+    console.log("✅ PostgreSQL подключен");
   }
   console.log("");
 });
