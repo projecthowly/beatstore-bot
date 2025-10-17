@@ -1,5 +1,4 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
 import fs from "fs";
 import path from "path";
 
@@ -15,7 +14,7 @@ const s3Client = new S3Client({
     accessKeyId: process.env.S3_ACCESS_KEY || "",
     secretAccessKey: process.env.S3_SECRET_KEY || "",
   },
-  forcePathStyle: false, // vHosted-style URLs
+  forcePathStyle: true, // Path-style URLs для Yandex Object Storage
 });
 
 /**
@@ -35,31 +34,23 @@ export async function uploadToS3(
   s3Key: string,
   contentType: string
 ): Promise<string> {
-  const fileStream = fs.createReadStream(filePath);
   const bucketName = process.env.S3_BUCKET || "beatstore";
 
   try {
-    // Используем @aws-sdk/lib-storage для multipart upload больших файлов
-    const upload = new Upload({
-      client: s3Client,
-      params: {
-        Bucket: bucketName,
-        Key: s3Key,
-        Body: fileStream,
-        ContentType: contentType,
-        // ACL не используется - доступ настроен через публичный бакет
-      },
+    // Читаем весь файл в память (простая загрузка без multipart)
+    const fileContent = fs.readFileSync(filePath);
+
+    console.log(`📤 Uploading ${s3Key} (${(fileContent.length / 1024 / 1024).toFixed(2)} MB)...`);
+
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: s3Key,
+      Body: fileContent,
+      ContentType: contentType,
+      ACL: "public-read", // Делаем файл публично доступным
     });
 
-    // Отслеживание прогресса (опционально)
-    upload.on("httpUploadProgress", (progress) => {
-      if (progress.loaded && progress.total) {
-        const percent = Math.round((progress.loaded / progress.total) * 100);
-        console.log(`📤 Uploading ${s3Key}: ${percent}%`);
-      }
-    });
-
-    await upload.done();
+    await s3Client.send(command);
 
     // Формируем публичный URL (Yandex Object Storage)
     const publicUrl = `https://storage.yandexcloud.net/${bucketName}/${s3Key}`;
@@ -69,8 +60,6 @@ export async function uploadToS3(
   } catch (error) {
     console.error(`❌ S3 upload failed for ${s3Key}:`, error);
     throw new Error(`Failed to upload file to S3: ${error}`);
-  } finally {
-    fileStream.destroy(); // Закрываем поток
   }
 }
 
@@ -96,7 +85,7 @@ export async function uploadBufferToS3(
       Key: s3Key,
       Body: buffer,
       ContentType: contentType,
-      // ACL не используется - доступ настроен через публичный бакет
+      ACL: "public-read", // Делаем файл публично доступным
     });
 
     await s3Client.send(command);
