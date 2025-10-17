@@ -27,7 +27,7 @@ export type Beat = {
   };
 
   prices: {
-    [licenseId: string]: number | null;
+    [licenseId: string]: { name: string; price: number } | null;
   };
 
   /** опциональный автор, если сервер его присылает */

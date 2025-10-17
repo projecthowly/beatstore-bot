@@ -730,12 +730,6 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     async updateBeatPrices(beatId: string, prices: Prices) {
-      // Обновляем локально
-      const updatedBeats = get().beats.map((b) =>
-        b.id === beatId ? { ...b, prices } : b
-      );
-      set({ beats: updatedBeats });
-
       // Отправляем в БД
       try {
         const response = await fetch(`${API_BASE}/api/beats/${beatId}/prices`, {
@@ -749,10 +743,12 @@ export const useApp = create<AppState>((set, get) => {
         }
 
         console.log(`✅ Цены обновлены в БД для бита ${beatId}:`, prices);
+
+        // После успешного обновления, перезагружаем биты чтобы получить обновлённые данные
+        await get().bootstrap();
       } catch (e) {
         console.error("❌ Ошибка при обновлении цен в БД:", e);
-        // В случае ошибки откатываем изменения
-        set({ beats: get().beats });
+        throw e;
       }
     },
 

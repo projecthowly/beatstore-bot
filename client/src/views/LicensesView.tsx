@@ -38,12 +38,20 @@ export default function LicensesView() {
     if (!license || license.defaultPrice === null) return;
 
     // Применяем цену ко всем битам
-    const updatePromises = beats.map((beat) =>
-      updateBeatPrices(beat.id, {
-        ...beat.prices,
-        [licenseId]: license.defaultPrice,
-      })
-    );
+    const updatePromises = beats.map((beat) => {
+      // Создаем новый объект prices в старом формате (number) для API
+      const oldFormatPrices: any = {};
+      Object.entries(beat.prices).forEach(([key, value]) => {
+        if (value && typeof value === "object") {
+          oldFormatPrices[key] = value.price;
+        } else {
+          oldFormatPrices[key] = value;
+        }
+      });
+      oldFormatPrices[licenseId] = license.defaultPrice;
+
+      return updateBeatPrices(beat.id, oldFormatPrices);
+    });
 
     try {
       await Promise.all(updatePromises);

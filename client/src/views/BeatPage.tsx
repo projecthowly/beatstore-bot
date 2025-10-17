@@ -52,24 +52,24 @@ export default function BeatPage() {
       </Card>
 
       <Stack gap="10px">
-        {beat.prices.mp3 && (
+        {beat.prices.mp3 && typeof beat.prices.mp3 === "object" && (
           <LicenseRow
-            name="MP3"
-            price={beat.prices.mp3}
+            name={beat.prices.mp3.name}
+            price={beat.prices.mp3.price}
             onAdd={() => addToCart(beat.id, "mp3")}
           />
         )}
-        {beat.prices.wav && (
+        {beat.prices.wav && typeof beat.prices.wav === "object" && (
           <LicenseRow
-            name="WAV"
-            price={beat.prices.wav}
+            name={beat.prices.wav.name}
+            price={beat.prices.wav.price}
             onAdd={() => addToCart(beat.id, "wav")}
           />
         )}
-        {beat.prices.stems && (
+        {beat.prices.stems && typeof beat.prices.stems === "object" && (
           <LicenseRow
-            name="STEMS"
-            price={beat.prices.stems}
+            name={beat.prices.stems.name}
+            price={beat.prices.stems.price}
             onAdd={() => addToCart(beat.id, "stems")}
           />
         )}

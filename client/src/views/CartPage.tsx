@@ -8,7 +8,9 @@ export default function CartPage() {
 
   const items = cart.map((c) => {
     const b = beats.find((x) => x.id === c.beatId)!;
-    return { ...c, beat: b, price: b.prices[c.license] || 0 };
+    const licenseData = b.prices[c.license];
+    const price = licenseData && typeof licenseData === "object" ? licenseData.price : 0;
+    return { ...c, beat: b, price };
   });
   const total = items.reduce((s, i) => s + i.price, 0);
 

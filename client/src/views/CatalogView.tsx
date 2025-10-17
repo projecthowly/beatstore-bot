@@ -7,7 +7,7 @@ import { useState, useRef } from "react";
 import UploadModal from "../components/UploadModal";
 import PlayerCard from "../components/PlayerCard";
 import LicenseModal from "../components/LicenseModal";
-import DollarIcon from "../assets/icons/Dollar.png";
+import AddCartIcon from "../assets/icons/AddCart.png";
 
 export default function CatalogView() {
   const { beats, isOwnStore, session } = useApp();
@@ -60,7 +60,9 @@ function BeatRow({ beat }: { beat: Beat }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Проверяем есть ли хоть одна лицензия с ценой
-  const hasLicenses = Object.values(beat.prices).some(price => price && typeof price === "number");
+  const hasLicenses = Object.values(beat.prices).some(
+    licenseData => licenseData && typeof licenseData === "object" && licenseData.price > 0
+  );
 
   const playingThis = playingBeatId === beat.id && isPlaying;
 
@@ -138,19 +140,18 @@ function BeatRow({ beat }: { beat: Beat }) {
             <>
               <ActionIcon
                 ref={buttonRef}
-                size="md"
+                size="lg"
                 variant="filled"
                 style={{
-                  backgroundColor: "rgba(110,107,255,0.2)",
-                  color: "#6E6BFF",
+                  backgroundColor: "transparent",
                   cursor: "pointer",
                 }}
                 onClick={() => setModalOpened(true)}
               >
                 <img
-                  src={DollarIcon}
-                  alt="Prices"
-                  style={{ width: 20, height: 20 }}
+                  src={AddCartIcon}
+                  alt="Add to cart"
+                  style={{ width: 28, height: 28 }}
                 />
               </ActionIcon>
               <LicenseModal

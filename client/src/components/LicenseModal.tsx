@@ -20,13 +20,12 @@ export default function LicenseModal({ beat, opened, onClose, targetRef }: Licen
   const availableLicenses = useMemo(() => {
     const licenses: Array<{ type: LicenseType; name: string; price: number }> = [];
 
-    Object.entries(beat.prices).forEach(([licenseId, price]) => {
-      if (price && typeof price === "number") {
-        // Название лицензии - просто "License {id}"
+    Object.entries(beat.prices).forEach(([licenseId, licenseData]) => {
+      if (licenseData && typeof licenseData === "object") {
         licenses.push({
           type: licenseId as LicenseType,
-          name: `License ${licenseId}`,
-          price
+          name: licenseData.name,
+          price: licenseData.price
         });
       }
     });

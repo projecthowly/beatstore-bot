@@ -4,7 +4,7 @@ import { useApp } from "../store";
 import { GlassCard } from "../ui/Glass";
 import type { Beat } from "../types";
 import LicenseModal from "../components/LicenseModal";
-import DollarIcon from "../assets/icons/Dollar.png";
+import AddCartIcon from "../assets/icons/AddCart.png";
 
 export function GlobalMarketView() {
   const beats = useApp((s) => s.beats);
@@ -194,15 +194,14 @@ function BeatCard({ beat, isPlaying, onTogglePlay }: BeatCardProps) {
           </Text>
         </Group>
 
-        {/* Иконка доллара для открытия модального окна с лицензиями */}
+        {/* Иконка корзины для открытия модального окна с лицензиями */}
         <Group gap={8} mt={8}>
           <ActionIcon
             ref={priceButtonRef}
-            size="md"
+            size="lg"
             variant="filled"
             style={{
-              backgroundColor: "rgba(110,107,255,0.2)",
-              color: "#6E6BFF",
+              backgroundColor: "transparent",
               cursor: "pointer",
             }}
             onClick={(e) => {
@@ -211,9 +210,9 @@ function BeatCard({ beat, isPlaying, onTogglePlay }: BeatCardProps) {
             }}
           >
             <img
-              src={DollarIcon}
-              alt="Prices"
-              style={{ width: 20, height: 20 }}
+              src={AddCartIcon}
+              alt="Add to cart"
+              style={{ width: 28, height: 28 }}
             />
           </ActionIcon>
         </Group>

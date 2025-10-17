@@ -354,12 +354,14 @@ app.get("/api/beats", async (req, res) => {
         json_agg(
           json_build_object(
             'licenseKey', bl.license_id::text,
+            'licenseName', l.name,
             'price', bl.price
           )
         ) FILTER (WHERE bl.id IS NOT NULL) as licenses
       FROM beats b
       LEFT JOIN users u ON b.user_id = u.id
       LEFT JOIN beat_licenses bl ON b.id = bl.beat_id
+      LEFT JOIN licenses l ON bl.license_id = l.id
       GROUP BY b.id, u.id
       ORDER BY b.created_at DESC
     `);
@@ -376,7 +378,10 @@ app.get("/api/beats", async (req, res) => {
         stems: row.stemsUrl || "",
       },
       prices: (row.licenses || []).reduce((acc: any, lic: any) => {
-        acc[lic.licenseKey] = parseFloat(lic.price);
+        acc[lic.licenseKey] = {
+          name: lic.licenseName,
+          price: parseFloat(lic.price)
+        };
         return acc;
       }, {}),
       author: row.author_id ? {
