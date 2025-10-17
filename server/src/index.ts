@@ -331,6 +331,175 @@ app.get("/api/users/:telegramId/purchases", async (req, res) => {
   }
 });
 
+/* ========== CART ENDPOINTS ========== */
+
+/**
+ * GET /api/users/:telegramId/cart
+ * Получить корзину пользователя
+ */
+app.get("/api/users/:telegramId/cart", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Получаем корзину с информацией о битах и лицензиях
+    const result = await pool.query(
+      `SELECT
+        c.id,
+        c.beat_id,
+        c.license_id,
+        c.added_at,
+        b.title as beat_title,
+        l.name as license_name,
+        bl.price as license_price
+       FROM cart c
+       JOIN beats b ON c.beat_id = b.id
+       JOIN licenses l ON c.license_id = l.id
+       LEFT JOIN beat_licenses bl ON bl.beat_id = c.beat_id AND bl.license_id = c.license_id
+       WHERE c.user_id = $1
+       ORDER BY c.added_at DESC`,
+      [user.id]
+    );
+
+    const cartItems = result.rows.map((row: any) => ({
+      beatId: `beat_${row.beat_id}`,
+      license: row.license_id.toString(),
+      beatTitle: row.beat_title,
+      licenseName: row.license_name,
+      price: row.license_price ? parseFloat(row.license_price) : 0,
+      addedAt: row.added_at,
+    }));
+
+    res.json({ ok: true, cart: cartItems });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId/cart error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * POST /api/users/:telegramId/cart
+ * Добавить товар в корзину
+ * Body: { beatId: string, licenseId: string }
+ */
+app.post("/api/users/:telegramId/cart", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { beatId, licenseId } = req.body;
+    if (!beatId || !licenseId) {
+      return res.status(400).json({ ok: false, error: "missing-parameters" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Извлекаем числовой ID бита из строки "beat_123"
+    const numericBeatId = parseInt(beatId.replace("beat_", ""), 10);
+    const numericLicenseId = parseInt(licenseId, 10);
+
+    if (isNaN(numericBeatId) || isNaN(numericLicenseId)) {
+      return res.status(400).json({ ok: false, error: "invalid-ids" });
+    }
+
+    // Добавляем в корзину (или игнорируем если уже есть из-за UNIQUE constraint)
+    await pool.query(
+      `INSERT INTO cart (user_id, beat_id, license_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, beat_id, license_id) DO NOTHING`,
+      [user.id, numericBeatId, numericLicenseId]
+    );
+
+    console.log(`✅ Добавлено в корзину: user=${user.id}, beat=${numericBeatId}, license=${numericLicenseId}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/users/:telegramId/cart error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * DELETE /api/users/:telegramId/cart
+ * Удалить товар из корзины
+ * Body: { beatId: string, licenseId: string }
+ */
+app.delete("/api/users/:telegramId/cart", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { beatId, licenseId } = req.body;
+    if (!beatId || !licenseId) {
+      return res.status(400).json({ ok: false, error: "missing-parameters" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Извлекаем числовой ID бита
+    const numericBeatId = parseInt(beatId.replace("beat_", ""), 10);
+    const numericLicenseId = parseInt(licenseId, 10);
+
+    if (isNaN(numericBeatId) || isNaN(numericLicenseId)) {
+      return res.status(400).json({ ok: false, error: "invalid-ids" });
+    }
+
+    await pool.query(
+      `DELETE FROM cart
+       WHERE user_id = $1 AND beat_id = $2 AND license_id = $3`,
+      [user.id, numericBeatId, numericLicenseId]
+    );
+
+    console.log(`✅ Удалено из корзины: user=${user.id}, beat=${numericBeatId}, license=${numericLicenseId}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /api/users/:telegramId/cart error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * DELETE /api/users/:telegramId/cart/all
+ * Очистить всю корзину
+ */
+app.delete("/api/users/:telegramId/cart/all", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    await pool.query("DELETE FROM cart WHERE user_id = $1", [user.id]);
+
+    console.log(`✅ Корзина очищена для пользователя ${user.id}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /api/users/:telegramId/cart/all error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
 /* ---------- GET /api/beats ---------- */
 app.get("/api/beats", async (req, res) => {
   try {

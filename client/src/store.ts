@@ -128,6 +128,7 @@ type AppState = {
   volume: number;
 
   cart: CartItem[];
+  loadCart: () => Promise<void>;
 
   // Лицензии пользователя
   licenses: License[];
@@ -494,22 +495,98 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     /* === КОРЗИНА === */
-    addToCart(beatId, license) {
+    async loadCart() {
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}/cart`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.cart && Array.isArray(data.cart)) {
+            const cart = data.cart.map((item: any) => ({
+              beatId: item.beatId,
+              license: item.license,
+            }));
+            set({ cart });
+            console.log("✅ Корзина загружена из БД:", cart);
+          }
+        }
+      } catch (e) {
+        console.error("❌ Ошибка загрузки корзины:", e);
+      }
+    },
+
+    async addToCart(beatId, license) {
       const exists = get().cart.some(
         (c) => c.beatId === beatId && c.license === license,
       );
       if (exists) return;
+
+      // Обновляем локально
       set({ cart: [...get().cart, { beatId, license }] });
+
+      // Сохраняем в БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/cart`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ beatId, licenseId: license }),
+        });
+        console.log("✅ Добавлено в корзину в БД:", { beatId, license });
+      } catch (e) {
+        console.error("❌ Ошибка добавления в корзину:", e);
+        // Откатываем изменения при ошибке
+        set({
+          cart: get().cart.filter(
+            (c) => !(c.beatId === beatId && c.license === license),
+          ),
+        });
+      }
     },
-    removeFromCart(beatId, license) {
-      set({
-        cart: get().cart.filter(
-          (c) => !(c.beatId === beatId && c.license === license),
-        ),
-      });
+
+    async removeFromCart(beatId, license) {
+      // Обновляем локально
+      const newCart = get().cart.filter(
+        (c) => !(c.beatId === beatId && c.license === license),
+      );
+      set({ cart: newCart });
+
+      // Удаляем из БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/cart`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ beatId, licenseId: license }),
+        });
+        console.log("✅ Удалено из корзины в БД:", { beatId, license });
+      } catch (e) {
+        console.error("❌ Ошибка удаления из корзины:", e);
+      }
     },
-    clearCart() {
+
+    async clearCart() {
+      // Очищаем локально
       set({ cart: [] });
+
+      // Очищаем в БД
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}/cart/all`, {
+          method: "DELETE",
+        });
+        console.log("✅ Корзина очищена в БД");
+      } catch (e) {
+        console.error("❌ Ошибка очистки корзины:", e);
+      }
     },
 
     /* === ЗАГРУЗКА === */
@@ -871,8 +948,9 @@ export const useApp = create<AppState>((set, get) => {
           saveSessionToLS(newUserSession);
           console.log("🎭 Установлена сессия для нового пользователя (артист)");
 
-          // Загружаем лицензии
+          // Загружаем лицензии и корзину
           useApp.getState().loadLicenses();
+          useApp.getState().loadCart();
 
         } else if (response.ok) {
           // Пользователь СУЩЕСТВУЕТ - загружаем ВСЕ данные из БД
@@ -916,10 +994,11 @@ export const useApp = create<AppState>((set, get) => {
             saveSessionToLS(existingUserSession);
             console.log("🔄 Загружены данные пользователя из БД:", userFromDB);
 
-            // Загружаем лицензии для продюсера
+            // Загружаем лицензии для продюсера и корзину для всех
             if (existingUserSession.role === "producer") {
               useApp.getState().loadLicenses();
             }
+            useApp.getState().loadCart();
           } else {
             console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
             useApp.setState({ userInitialized: true });
