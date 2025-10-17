@@ -1,12 +1,13 @@
 import { Group, Image, Text, ActionIcon, Tooltip } from "@mantine/core";
 import { IconPlus, IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
-import { GlassCard, NeonButton } from "../ui/Glass";
+import { GlassCard } from "../ui/Glass";
 import { useApp } from "../store";
-import type { Beat, LicenseType } from "../types";
+import type { Beat } from "../types";
 import { useState, useRef } from "react";
 import UploadModal from "../components/UploadModal";
 import PlayerCard from "../components/PlayerCard";
 import LicenseModal from "../components/LicenseModal";
+import DollarIcon from "../assets/icons/Dollar.png";
 
 export default function CatalogView() {
   const { beats, isOwnStore, session } = useApp();
@@ -58,19 +59,8 @@ function BeatRow({ beat }: { beat: Beat }) {
   const [modalOpened, setModalOpened] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const prices = [beat.prices.mp3, beat.prices.wav, beat.prices.stems].filter(
-    (x): x is number => typeof x === "number" && x > 0,
-  );
-  const min = prices.length ? Math.min(...prices) : NaN;
-  const minLabel = Number.isFinite(min) ? `$${min}` : "—";
-
-  const firstAvailable: LicenseType | undefined = beat.prices.mp3
-    ? "mp3"
-    : beat.prices.wav
-      ? "wav"
-      : beat.prices.stems
-        ? "stems"
-        : undefined;
+  // Проверяем есть ли хоть одна лицензия с ценой
+  const hasLicenses = Object.values(beat.prices).some(price => price && typeof price === "number");
 
   const playingThis = playingBeatId === beat.id && isPlaying;
 
@@ -144,26 +134,25 @@ function BeatRow({ beat }: { beat: Beat }) {
           onClick={(e) => e.stopPropagation()}
           style={{ flexShrink: 0 }}
         >
-          {firstAvailable && (
+          {hasLicenses && (
             <>
-              <NeonButton
+              <ActionIcon
                 ref={buttonRef}
-                size="xs"
-                onClick={() => setModalOpened(true)}
+                size="md"
+                variant="filled"
                 style={{
-                  fontSize: "11px",
-                  padding: "0",
-                  width: "50px",
-                  height: "28px",
-                  minWidth: "50px",
-                  maxWidth: "50px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
+                  backgroundColor: "rgba(110,107,255,0.2)",
+                  color: "#6E6BFF",
+                  cursor: "pointer",
                 }}
+                onClick={() => setModalOpened(true)}
               >
-                {minLabel}
-              </NeonButton>
+                <img
+                  src={DollarIcon}
+                  alt="Prices"
+                  style={{ width: 20, height: 20 }}
+                />
+              </ActionIcon>
               <LicenseModal
                 beat={beat}
                 opened={modalOpened}

@@ -1,6 +1,6 @@
 import { Popover, Stack, Group, Button, Text, Box, ActionIcon } from "@mantine/core";
 import { IconX } from "@tabler/icons-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { notifications } from "@mantine/notifications";
 import type { Beat, LicenseType } from "../types";
 import { useApp } from "../store";
@@ -16,20 +16,23 @@ export default function LicenseModal({ beat, opened, onClose, targetRef }: Licen
   const { addToCart } = useApp();
   const [selectedLicense, setSelectedLicense] = useState<LicenseType | null>(null);
 
-  // Собираем доступные лицензии из prices объекта
-  const availableLicenses: Array<{ type: LicenseType; name: string; price: number }> = [];
+  // Собираем доступные лицензии из prices объекта с помощью useMemo
+  const availableLicenses = useMemo(() => {
+    const licenses: Array<{ type: LicenseType; name: string; price: number }> = [];
 
-  // Проходим по всем ценам и создаём лицензии
-  Object.entries(beat.prices).forEach(([licenseId, price]) => {
-    if (price && typeof price === "number") {
-      // Название лицензии - просто "License {id}"
-      availableLicenses.push({
-        type: licenseId as LicenseType,
-        name: `License ${licenseId}`,
-        price
-      });
-    }
-  });
+    Object.entries(beat.prices).forEach(([licenseId, price]) => {
+      if (price && typeof price === "number") {
+        // Название лицензии - просто "License {id}"
+        licenses.push({
+          type: licenseId as LicenseType,
+          name: `License ${licenseId}`,
+          price
+        });
+      }
+    });
+
+    return licenses;
+  }, [beat.prices]);
 
   // Выбираем минимальную лицензию по цене при открытии
   useEffect(() => {
@@ -39,7 +42,7 @@ export default function LicenseModal({ beat, opened, onClose, targetRef }: Licen
       );
       setSelectedLicense(minPriceLicense.type);
     }
-  }, [opened]);
+  }, [opened, availableLicenses]);
 
   const handleBuyNow = () => {
     notifications.show({
