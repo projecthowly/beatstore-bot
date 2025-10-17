@@ -47,7 +47,7 @@ export async function uploadToS3(
       Key: s3Key,
       Body: fileContent,
       ContentType: contentType,
-      // ACL не нужен - публичный доступ настроен через Bucket Policy
+      ACL: "public-read", // Явно делаем файл публичным
     });
 
     await s3Client.send(command);
@@ -85,7 +85,7 @@ export async function uploadBufferToS3(
       Key: s3Key,
       Body: buffer,
       ContentType: contentType,
-      // ACL не нужен - публичный доступ настроен через Bucket Policy
+      ACL: "public-read", // Явно делаем файл публичным
     });
 
     await s3Client.send(command);
