@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(docker exec:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(ssh root@beatry.store \"cd /root/beatstore-bot && docker compose restart beatstore-app\")"
     ],
     "deny": [],
     "ask": []
