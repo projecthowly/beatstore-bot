@@ -1,15 +1,16 @@
 import { Stack, TextInput, SimpleGrid, Text, Group, ActionIcon } from "@mantine/core";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useApp } from "../store";
 import { GlassCard } from "../ui/Glass";
 import type { Beat } from "../types";
+import LicenseModal from "../components/LicenseModal";
+import DollarIcon from "../assets/icons/Dollar.png";
 
 export function GlobalMarketView() {
   const beats = useApp((s) => s.beats);
   const playingBeatId = useApp((s) => s.playingBeatId);
   const isPlaying = useApp((s) => s.isPlaying);
   const togglePlay = useApp((s) => s.togglePlay);
-  const addToCart = useApp((s) => s.addToCart);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -79,7 +80,6 @@ export function GlobalMarketView() {
               beat={beat}
               isPlaying={playingBeatId === beat.id && isPlaying}
               onTogglePlay={() => togglePlay(beat.id)}
-              onAddToCart={(license) => addToCart(beat.id, license)}
             />
           ))}
         </SimpleGrid>
@@ -92,11 +92,14 @@ type BeatCardProps = {
   beat: Beat;
   isPlaying: boolean;
   onTogglePlay: () => void;
-  onAddToCart: (license: "mp3" | "wav" | "stems") => void;
 };
 
-function BeatCard({ beat, isPlaying, onTogglePlay, onAddToCart }: BeatCardProps) {
+function BeatCard({ beat, isPlaying, onTogglePlay }: BeatCardProps) {
+  const [licenseModalOpened, setLicenseModalOpened] = useState(false);
+  const priceButtonRef = useRef<HTMLButtonElement>(null);
+
   return (
+    <>
     <GlassCard
       style={{
         padding: 0,
@@ -191,29 +194,39 @@ function BeatCard({ beat, isPlaying, onTogglePlay, onAddToCart }: BeatCardProps)
           </Text>
         </Group>
 
-        {/* Цены */}
+        {/* Иконка доллара для открытия модального окна с лицензиями */}
         <Group gap={8} mt={8}>
-          {beat.prices.mp3 && (
-            <ActionIcon
-              size="sm"
-              variant="filled"
-              style={{
-                backgroundColor: "rgba(110,107,255,0.2)",
-                color: "#6E6BFF",
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToCart("mp3");
-              }}
-            >
-              🛒
-            </ActionIcon>
-          )}
-          <Text size="14px" c="#6E6BFF" fw={600}>
-            {beat.prices.mp3 ? `${beat.prices.mp3}₽` : "Бесплатно"}
-          </Text>
+          <ActionIcon
+            ref={priceButtonRef}
+            size="md"
+            variant="filled"
+            style={{
+              backgroundColor: "rgba(110,107,255,0.2)",
+              color: "#6E6BFF",
+              cursor: "pointer",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setLicenseModalOpened(true);
+            }}
+          >
+            <img
+              src={DollarIcon}
+              alt="Prices"
+              style={{ width: 20, height: 20 }}
+            />
+          </ActionIcon>
         </Group>
       </Stack>
     </GlassCard>
+
+    {/* Модальное окно с лицензиями */}
+    <LicenseModal
+      beat={beat}
+      opened={licenseModalOpened}
+      onClose={() => setLicenseModalOpened(false)}
+      targetRef={priceButtonRef}
+    />
+    </>
   );
 }

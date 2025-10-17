@@ -16,11 +16,20 @@ export default function LicenseModal({ beat, opened, onClose, targetRef }: Licen
   const { addToCart } = useApp();
   const [selectedLicense, setSelectedLicense] = useState<LicenseType | null>(null);
 
-  // Собираем доступные лицензии
+  // Собираем доступные лицензии из prices объекта
   const availableLicenses: Array<{ type: LicenseType; name: string; price: number }> = [];
-  if (beat.prices.mp3) availableLicenses.push({ type: "mp3", name: "MP3", price: beat.prices.mp3 });
-  if (beat.prices.wav) availableLicenses.push({ type: "wav", name: "WAV", price: beat.prices.wav });
-  if (beat.prices.stems) availableLicenses.push({ type: "stems", name: "STEMS", price: beat.prices.stems });
+
+  // Проходим по всем ценам и создаём лицензии
+  Object.entries(beat.prices).forEach(([licenseId, price]) => {
+    if (price && typeof price === "number") {
+      // Название лицензии - просто "License {id}"
+      availableLicenses.push({
+        type: licenseId as LicenseType,
+        name: `License ${licenseId}`,
+        price
+      });
+    }
+  });
 
   // Выбираем минимальную лицензию по цене при открытии
   useEffect(() => {
