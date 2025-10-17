@@ -1,107 +1,98 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
-import fs from "fs";
+const EasyYandexS3 = require("easy-yandex-s3").default;
 import path from "path";
 
 /**
  * S3 клиент для Yandex Object Storage
- * Endpoint: https://storage.yandexcloud.net
- * Region: ru-central1
+ * Использует easy-yandex-s3 для нативной поддержки Яндекса
+ *
+ * Документация: https://github.com/powerdot/easy-yandex-s3
  */
-const s3Client = new S3Client({
-  region: process.env.S3_REGION || "ru-central1",
-  endpoint: process.env.S3_ENDPOINT || "https://storage.yandexcloud.net",
-  credentials: {
+const s3 = new EasyYandexS3({
+  auth: {
     accessKeyId: process.env.S3_ACCESS_KEY || "",
     secretAccessKey: process.env.S3_SECRET_KEY || "",
   },
-  forcePathStyle: false, // vHosted-style URLs
+  Bucket: process.env.S3_BUCKET || "beatstore",
+  debug: false, // Включить для отладки в консоли
 });
 
 /**
  * Загрузить файл в S3 и вернуть публичный URL
  *
  * @param filePath - Локальный путь к файлу
- * @param s3Key - Ключ (путь) файла в S3 bucket (например: "audio/beat_123.mp3")
- * @param contentType - MIME тип файла
+ * @param s3Key - Ключ (путь) файла в S3 bucket (например: "audio/mp3/beat_123.mp3")
+ * @param contentType - MIME тип файла (не используется в easy-yandex-s3)
  * @returns Публичный URL загруженного файла
  *
  * @example
- * const url = await uploadToS3("/tmp/file.mp3", "audio/beat_123.mp3", "audio/mpeg");
- * // url: https://beatstore-files.s3.ru-7.storage.selcloud.ru/audio/beat_123.mp3
+ * const url = await uploadToS3("/tmp/file.mp3", "audio/mp3/beat_123.mp3", "audio/mpeg");
+ * // url: https://storage.yandexcloud.net/beatstore/audio/mp3/beat_123.mp3
  */
 export async function uploadToS3(
   filePath: string,
   s3Key: string,
-  contentType: string
+  _contentType: string // Не используется - easy-yandex-s3 определяет автоматически
 ): Promise<string> {
-  const fileStream = fs.createReadStream(filePath);
-  const bucketName = process.env.S3_BUCKET || "beatstore-files";
-
   try {
-    // Используем @aws-sdk/lib-storage для multipart upload больших файлов
-    const upload = new Upload({
-      client: s3Client,
-      params: {
-        Bucket: bucketName,
-        Key: s3Key,
-        Body: fileStream,
-        ContentType: contentType,
-        // ACL не используется - доступ настроен через публичный бакет
+    console.log(`📤 Uploading ${s3Key} to Yandex Object Storage...`);
+
+    // Загружаем файл через easy-yandex-s3
+    // path - путь к локальному файлу
+    // save_name - true означает сохранить оригинальное имя (мы передаём полный путь с папками)
+    const upload = await s3.Upload(
+      {
+        path: filePath,
+        save_name: true,
+        name: s3Key, // Полный путь в бакете включая папки
       },
-    });
+      "/" // Корневая директория
+    );
 
-    // Отслеживание прогресса (опционально)
-    upload.on("httpUploadProgress", (progress) => {
-      if (progress.loaded && progress.total) {
-        const percent = Math.round((progress.loaded / progress.total) * 100);
-        console.log(`📤 Uploading ${s3Key}: ${percent}%`);
-      }
-    });
+    if (!upload || !upload.Location) {
+      throw new Error("Upload failed: no Location returned");
+    }
 
-    await upload.done();
-
-    // Формируем публичный URL (Yandex Object Storage)
-    const publicUrl = `https://storage.yandexcloud.net/${bucketName}/${s3Key}`;
+    const publicUrl = upload.Location;
     console.log(`✅ Uploaded to S3: ${publicUrl}`);
 
     return publicUrl;
   } catch (error) {
     console.error(`❌ S3 upload failed for ${s3Key}:`, error);
     throw new Error(`Failed to upload file to S3: ${error}`);
-  } finally {
-    fileStream.destroy(); // Закрываем поток
   }
 }
 
 /**
  * Загрузить файл из Buffer в S3
- * Полезно для загрузки файлов из памяти без сохранения на диск
+ * Используется для загрузки из памяти (например, с multer)
  *
  * @param buffer - Буфер с данными файла
- * @param s3Key - Ключ файла в S3
- * @param contentType - MIME тип
+ * @param s3Key - Ключ файла в S3 (например: "covers/image.png")
+ * @param contentType - MIME тип (не используется в easy-yandex-s3)
  * @returns Публичный URL
  */
 export async function uploadBufferToS3(
   buffer: Buffer,
   s3Key: string,
-  contentType: string
+  _contentType: string // Не используется - easy-yandex-s3 определяет автоматически
 ): Promise<string> {
-  const bucketName = process.env.S3_BUCKET || "beatstore-files";
-
   try {
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: s3Key,
-      Body: buffer,
-      ContentType: contentType,
-      // ACL не используется - доступ настроен через публичный бакет
-    });
+    console.log(`📤 Uploading buffer ${s3Key} to Yandex Object Storage...`);
 
-    await s3Client.send(command);
+    // Загружаем Buffer через easy-yandex-s3
+    const upload = await s3.Upload(
+      {
+        buffer: buffer,
+        name: s3Key, // Полный путь включая папки
+      },
+      "/" // Корневая директория
+    );
 
-    const publicUrl = `https://storage.yandexcloud.net/${bucketName}/${s3Key}`;
+    if (!upload || !upload.Location) {
+      throw new Error("Upload failed: no Location returned");
+    }
+
+    const publicUrl = upload.Location;
     console.log(`✅ Uploaded buffer to S3: ${publicUrl}`);
 
     return publicUrl;
@@ -136,13 +127,13 @@ export function getMimeType(filePath: string): string {
 /**
  * Генерация уникального ключа для S3
  *
- * @param folder - Папка (например: "audio", "covers", "stems")
+ * @param folder - Папка (например: "audio/mp3", "covers", "stems")
  * @param filename - Оригинальное имя файла
  * @returns Уникальный S3 ключ
  *
  * @example
- * generateS3Key("audio", "mybeat.mp3")
- * // "audio/1738567890_abc123_mybeat.mp3"
+ * generateS3Key("audio/mp3", "mybeat.mp3")
+ * // "audio/mp3/1738567890_abc123_mybeat.mp3"
  */
 export function generateS3Key(folder: string, filename: string): string {
   const ext = path.extname(filename);
@@ -154,4 +145,4 @@ export function generateS3Key(folder: string, filename: string): string {
 }
 
 // Экспортируем клиент для прямого использования (если нужно)
-export { s3Client };
+export { s3 };
