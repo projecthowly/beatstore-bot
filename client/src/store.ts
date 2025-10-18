@@ -150,9 +150,8 @@ type AppState = {
   setPendingStoreView: (pending: boolean | null) => void;
   toggleStoreView: () => void; // переключает между глобальным и личным
 
-  _bootDone: boolean;
   initFromUrl: () => void;
-  bootstrap: () => Promise<void>;
+  loadBeats: (userId?: number | null) => Promise<void>;
   isOwnStore: () => boolean;
   goToOwnStore: () => void;
 
@@ -221,7 +220,7 @@ export const useApp = create<AppState>((set, get) => {
   }
 
   return {
-    beats: [], // Биты загружаются из БД в bootstrap()
+    beats: [], // Биты НЕ загружаются глобально, загружаются в CatalogView/GlobalMarketView
     seller: initialMe,
     me: initialMe,
     session: initialSession,
@@ -249,7 +248,6 @@ export const useApp = create<AppState>((set, get) => {
     viewingGlobalStore: false, // по умолчанию личный битстор
     storeSwapAnimating: false,
     pendingStoreView: null,
-    _bootDone: false,
 
     async initFromUrl() {
       const url = new URL(window.location.href);
@@ -301,11 +299,16 @@ export const useApp = create<AppState>((set, get) => {
       }
     },
 
-    async bootstrap() {
-      if (get()._bootDone) return;
+    async loadBeats(userId?: number | null) {
       try {
-        console.log("📦 Загружаем биты из БД...");
-        const res = await fetch(`${API_BASE}/api/beats`);
+        // Если указан userId, загружаем только биты этого пользователя
+        // Если не указан, загружаем все биты (глобальный битстор)
+        const url = userId
+          ? `${API_BASE}/api/beats?userId=${userId}`
+          : `${API_BASE}/api/beats`;
+
+        console.log(`📦 Загружаем биты${userId ? ` для пользователя ${userId}` : ' (все)'}...`);
+        const res = await fetch(url);
         const data = await res.json();
         const rawBeats: Beat[] = Array.isArray(data)
           ? (data as any)
@@ -315,11 +318,11 @@ export const useApp = create<AppState>((set, get) => {
               ? data.list
               : [];
         const beats = rawBeats.map(normalizeBeat);
-        set({ beats, _bootDone: true });
-        console.log(`✅ Загружено ${beats.length} битов из БД`);
+        set({ beats });
+        console.log(`✅ Загружено ${beats.length} битов`);
       } catch (e) {
         console.error("❌ Ошибка загрузки битов из БД:", e);
-        set({ beats: [], _bootDone: true });
+        set({ beats: [] });
       }
     },
 
@@ -822,7 +825,10 @@ export const useApp = create<AppState>((set, get) => {
         console.log(`✅ Цены обновлены в БД для бита ${beatId}:`, prices);
 
         // После успешного обновления, перезагружаем биты чтобы получить обновлённые данные
-        await get().bootstrap();
+        const telegramId = get().telegramId;
+        if (telegramId) {
+          await get().loadBeats(telegramId);
+        }
       } catch (e) {
         console.error("❌ Ошибка при обновлении цен в БД:", e);
         throw e;
@@ -913,12 +919,7 @@ export const useApp = create<AppState>((set, get) => {
 (async () => {
   console.log("🚀 Начало инициализации пользователя, API_BASE:", API_BASE);
   try {
-    // Загружаем биты в фоне
-    const state = useApp.getState();
-    if (!state._bootDone) {
-      console.log("📦 Загружаем биты...");
-      state.bootstrap().catch((e) => console.error("❌ Ошибка загрузки битов:", e));
-    }
+    // Биты НЕ загружаются глобально! Они будут загружены в CatalogView или GlobalMarketView
 
     // Если есть telegramId, проверяем/создаём пользователя в БД
     if (telegramData.telegramId) {

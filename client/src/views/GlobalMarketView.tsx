@@ -1,5 +1,5 @@
 import { Stack, TextInput, SimpleGrid, Text, Group, ActionIcon } from "@mantine/core";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useApp } from "../store";
 import { GlassCard } from "../ui/Glass";
 import type { Beat } from "../types";
@@ -11,8 +11,15 @@ export function GlobalMarketView() {
   const playingBeatId = useApp((s) => s.playingBeatId);
   const isPlaying = useApp((s) => s.isPlaying);
   const togglePlay = useApp((s) => s.togglePlay);
+  const loadBeats = useApp((s) => s.loadBeats);
 
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Загружаем все биты (глобальный битстор) при монтировании компонента
+  useEffect(() => {
+    console.log(`📦 GlobalMarketView: Загружаем все биты`);
+    loadBeats(); // без userId = загружаем все биты
+  }, [loadBeats]);
 
   // Фильтрация битов по поиску
   const filteredBeats = useMemo(() => {

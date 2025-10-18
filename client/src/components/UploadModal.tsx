@@ -59,7 +59,7 @@ const ERROR_GLOW = "0 0 12px rgba(255,107,107,0.3)";
 const INDICATOR_ERROR_BG = "rgba(255,107,107,0.12)";
 
 export default function UploadModal({ opened, onClose }: Props) {
-  const { uploadBeat, licenses } = useApp();
+  const { uploadBeat, licenses, telegramId, loadBeats } = useApp();
 
   const [step, setStep] = useState<1 | 2>(1); // ✅ Шаг 1: метаданные, Шаг 2: цены
   const [slideDirection, setSlideDirection] = useState<"left" | "right">("left");
@@ -402,6 +402,12 @@ export default function UploadModal({ opened, onClose }: Props) {
       });
 
       console.log("✅ Бит создан успешно");
+
+      // Обновляем список битов после успешной загрузки
+      if (telegramId) {
+        await loadBeats(telegramId);
+      }
+
       onClose();
     } catch (error) {
       console.error("❌ Failed to create beat", error);

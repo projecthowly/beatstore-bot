@@ -503,8 +503,11 @@ app.delete("/api/users/:telegramId/cart/all", async (req, res) => {
 /* ---------- GET /api/beats ---------- */
 app.get("/api/beats", async (req, res) => {
   try {
-    // Получаем биты из PostgreSQL с данными автора и ценами на лицензии
-    const result = await pool.query(`
+    // Query параметры для фильтрации
+    // ?userId=TELEGRAM_ID - получить биты конкретного пользователя (для личного битстора)
+    const userId = req.query.userId ? parseInt(req.query.userId as string, 10) : null;
+
+    let query = `
       SELECT
         b.id,
         b.title,
@@ -531,9 +534,21 @@ app.get("/api/beats", async (req, res) => {
       LEFT JOIN users u ON b.user_id = u.id
       LEFT JOIN beat_licenses bl ON b.id = bl.beat_id
       LEFT JOIN licenses l ON bl.license_id = l.id
-      GROUP BY b.id, u.id
-      ORDER BY b.created_at DESC
-    `);
+    `;
+
+    // Если указан userId, фильтруем по пользователю
+    const params: any[] = [];
+    if (userId && !isNaN(userId)) {
+      query += ` WHERE u.telegram_id = $1`;
+      params.push(userId);
+      console.log(`📦 Загрузка битов пользователя ${userId}`);
+    } else {
+      console.log(`📦 Загрузка всех битов (глобальный битстор)`);
+    }
+
+    query += ` GROUP BY b.id, u.id ORDER BY b.created_at DESC`;
+
+    const result = await pool.query(query, params);
 
     const beats = result.rows.map((row: any) => ({
       id: `beat_${row.id}`,

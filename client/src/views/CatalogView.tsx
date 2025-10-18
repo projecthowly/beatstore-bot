@@ -3,15 +3,23 @@ import { IconPlus, IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
 import { GlassCard } from "../ui/Glass";
 import { useApp } from "../store";
 import type { Beat } from "../types";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import UploadModal from "../components/UploadModal";
 import PlayerCard from "../components/PlayerCard";
 import LicenseModal from "../components/LicenseModal";
 import AddCartIcon from "../assets/icons/AddCart.png";
 
 export default function CatalogView() {
-  const { beats, isOwnStore, session } = useApp();
+  const { beats, isOwnStore, session, telegramId, loadBeats } = useApp();
   const [open, setOpen] = useState(false);
+
+  // Загружаем биты текущего пользователя при монтировании компонента
+  useEffect(() => {
+    if (telegramId) {
+      console.log(`📦 CatalogView: Загружаем биты пользователя ${telegramId}`);
+      loadBeats(telegramId);
+    }
+  }, [telegramId, loadBeats]);
 
   return (
     <div style={{ position: "relative" }}>
