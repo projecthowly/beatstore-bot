@@ -13,31 +13,50 @@ function getTelegramDataFromUrl(): {
   username: string | null;
   role: "producer" | "artist" | null;
   isNewUser: boolean;
+  viewProducerId: number | null;
+  startParam: string | null;
 } {
   try {
-    // Пытаемся получить данные из URL параметров
+    // Пытаемся получить данные из URL параметров (старый способ через бота)
     const params = new URLSearchParams(window.location.search);
     const tgId = params.get("tgId");
     const username = params.get("username");
     const role = params.get("role");
     const isNew = params.get("isNew");
 
-    // Если данных нет в URL, пытаемся получить из Telegram Web App SDK
-    let telegramId: number | null = tgId ? parseInt(tgId, 10) : null;
-    let usernameResult: string | null = username || null;
+    // Приоритет Telegram WebApp SDK (для direct links)
+    let telegramId: number | null = null;
+    let usernameResult: string | null = null;
+    let viewProducerId: number | null = null; // ВСЕГДА null - используем ТОЛЬКО startParam для deeplink!
+    let startParam: string | null = null;
 
-    if (!telegramId && (window as any).Telegram?.WebApp?.initDataUnsafe?.user) {
-      const tgUser = (window as any).Telegram.WebApp.initDataUnsafe.user;
+    // Пытаемся получить данные из Telegram WebApp SDK
+    const tgWebApp = (window as any).Telegram?.WebApp;
+    if (tgWebApp?.initDataUnsafe?.user) {
+      const tgUser = tgWebApp.initDataUnsafe.user;
       telegramId = tgUser.id || null;
       usernameResult = tgUser.username || tgUser.first_name || null;
       console.log("📱 Данные получены из Telegram Web App SDK:", tgUser);
+
+      // Проверяем start_param для диплинка (Web App direct link format)
+      if (tgWebApp.initDataUnsafe.start_param) {
+        startParam = tgWebApp.initDataUnsafe.start_param;
+        console.log("🔗 Найден start_param (deeplink):", startParam);
+      }
+    }
+
+    // Если данные не получены из SDK, используем URL параметры (старый способ)
+    if (!telegramId && tgId) {
+      telegramId = parseInt(tgId, 10);
+      usernameResult = username || null;
     }
 
     console.log("🔍 getTelegramDataFromUrl:", {
       url: window.location.href,
       urlParams: { tgId, username, role, isNew },
-      fromSDK: !tgId && telegramId ? true : false,
-      finalData: { telegramId, username: usernameResult, role, isNew },
+      fromSDK: !!tgWebApp?.initDataUnsafe?.user,
+      sdkInitData: tgWebApp?.initDataUnsafe,
+      finalData: { telegramId, username: usernameResult, role, isNew, startParam },
       parsedIsNew: isNew === "1",
     });
 
@@ -46,10 +65,12 @@ function getTelegramDataFromUrl(): {
       username: usernameResult,
       role: role === "producer" || role === "artist" ? role : null,
       isNewUser: isNew === "1",
+      viewProducerId,
+      startParam,
     };
   } catch (e) {
     console.error("❌ Ошибка при получении Telegram данных:", e);
-    return { telegramId: null, username: null, role: null, isNewUser: true };
+    return { telegramId: null, username: null, role: null, isNewUser: true, viewProducerId: null, startParam: null };
   }
 }
 
@@ -76,7 +97,7 @@ function normalizeBeat(b: Beat): Beat {
 
 /* ========= localStorage (только для сессии) ========= */
 const LS_SESSION = "gb:session:v1"; // <— роль и флаг нового пользователя (только для быстрой загрузки)
-const OLD_KEYS = ["gb:beats", "gb_beats_v1", "gb:beats:v2", "gb:profile:v1"]; // Очищаем старые ключи
+const OLD_KEYS = ["gb:beats", "gb_beats_v1", "gb:beats:v2", "gb:profile:v1", "gb:deeplink_used:v1", "gb:has_opened_bot:v1", "gb:app_version", "gb:last_deeplink"]; // Очищаем старые ключи
 
 function saveSessionToLS(s: Session) {
   try {
@@ -99,26 +120,40 @@ type UploadPayload = {
   fileUrls: {
     cover: string | null;
     mp3: string | null;
+    mp3Untagged?: string | null;
     wav: string | null;
     stems: string | null;
   };
+  freeDownload?: boolean;
 };
 type CartItem = { beatId: string; license: LicenseType };
+
+export type LicenseFileType = "tagged_mp3" | "untagged_mp3" | "mp3_wav" | "mp3_wav_stems";
 
 export type License = {
   id: string;
   name: string;
   defaultPrice: number | null;
+  fileType?: LicenseFileType; // Какие файлы включены в лицензию
 };
 
 type AppState = {
-  beats: Beat[];
+  beats: Beat[]; // Текущие отображаемые биты (личные или глобальные)
+  personalBeats: Beat[]; // Кэш личных битов
+  globalBeats: Beat[]; // Кэш глобальных битов
   seller: Seller;
   me: Seller;
   session: Session;
   viewingOwnerId: string | null;
   telegramId: number | null; // ID пользователя из Telegram
   userInitialized: boolean; // Завершена ли проверка/создание пользователя
+
+  // Режим просмотра (когда пользователь переходит по deeplink)
+  isViewerMode: boolean; // true = просмотр чужого битстора
+  viewedProducer: Seller | null; // Данные просматриваемого продюсера
+  viewedProducerContactUsername: string | null; // Telegram username для связи
+  viewedProducerBio: string | null; // Bio продюсера
+  viewedProducerAvatarUrl: string | null; // Аватар продюсера
 
   playingBeatId: string | null;
   isPlaying: boolean;
@@ -152,8 +187,11 @@ type AppState = {
 
   initFromUrl: () => void;
   loadBeats: (userId?: number | null) => Promise<void>;
+  switchToPersonalBeats: () => void; // Мгновенно переключиться на личные биты из кэша
+  switchToGlobalBeats: () => void; // Мгновенно переключиться на глобальные биты из кэша
   isOwnStore: () => boolean;
   goToOwnStore: () => void;
+  exitViewerMode: () => Promise<void>;
 
   playBeat: (id: string) => void;
   togglePlay: (id: string) => void;
@@ -169,9 +207,26 @@ type AppState = {
   clearCart: () => void;
 
   uploadBeat: (payload: UploadPayload) => Promise<void>;
+  deleteBeat: (beatId: string) => Promise<void>;
 
   /** обновление ника (сохраняет в БД) */
   updateNickname: (next: string) => Promise<void>;
+
+  /** обновление профиля (bio и ссылки на соцсети) */
+  updateProfile: (data: {
+    bio?: string;
+    instagramUrl?: string;
+    youtubeUrl?: string;
+    soundcloudUrl?: string;
+    spotifyUrl?: string;
+    contactUsername?: string;
+  }) => Promise<void>;
+
+  /** deeplink пользователя */
+  deeplink: string | null;
+  loadDeeplink: () => Promise<void>;
+  updateDeeplink: (customName: string) => Promise<{ ok: boolean; error?: string }>;
+  getFullDeeplinkUrl: () => string;
 
   /** обновление цен лицензий для конкретного бита (сохраняет в БД) */
   updateBeatPrices: (beatId: string, prices: Prices) => Promise<void>;
@@ -220,13 +275,22 @@ export const useApp = create<AppState>((set, get) => {
   }
 
   return {
-    beats: [], // Биты НЕ загружаются глобально, загружаются в CatalogView/GlobalMarketView
+    beats: [], // Текущие отображаемые биты
+    personalBeats: [], // Кэш личных битов
+    globalBeats: [], // Кэш глобальных битов
     seller: initialMe,
     me: initialMe,
     session: initialSession,
     viewingOwnerId: initialMe.id,
     telegramId: telegramData.telegramId,
     userInitialized: false, // Изначально false, станет true после проверки БД
+
+    // Режим просмотра (только если viewProducerId не равен текущему пользователю)
+    isViewerMode: !!(telegramData.viewProducerId && telegramData.viewProducerId !== telegramData.telegramId),
+    viewedProducer: null, // Будет загружен из БД
+    viewedProducerContactUsername: null,
+    viewedProducerBio: null,
+    viewedProducerAvatarUrl: null,
 
     playingBeatId: null,
     isPlaying: false,
@@ -243,6 +307,8 @@ export const useApp = create<AppState>((set, get) => {
       { id: "wav", name: "WAV", defaultPrice: null },
       { id: "stems", name: "STEMS", defaultPrice: null },
     ],
+
+    deeplink: null,
 
     playerCollapsed: false,
     viewingGlobalStore: false, // по умолчанию личный битстор
@@ -301,7 +367,9 @@ export const useApp = create<AppState>((set, get) => {
 
     async loadBeats(userId?: number | null) {
       try {
-        // Если указан userId, загружаем только биты этого пользователя
+        const isPersonal = !!userId;
+
+        // Если указан userId, загружаем только биты этого пользователя (личный битстор)
         // Если не указан, загружаем все биты (глобальный битстор)
         const url = userId
           ? `${API_BASE}/api/beats?userId=${userId}`
@@ -318,12 +386,31 @@ export const useApp = create<AppState>((set, get) => {
               ? data.list
               : [];
         const beats = rawBeats.map(normalizeBeat);
-        set({ beats });
-        console.log(`✅ Загружено ${beats.length} битов`);
+
+        // Кэшируем биты в соответствующий массив и устанавливаем как текущие
+        if (isPersonal) {
+          set({ personalBeats: beats, beats });
+          console.log(`✅ Загружено ${beats.length} личных битов`);
+        } else {
+          set({ globalBeats: beats, beats });
+          console.log(`✅ Загружено ${beats.length} глобальных битов`);
+        }
       } catch (e) {
         console.error("❌ Ошибка загрузки битов из БД:", e);
         set({ beats: [] });
       }
+    },
+
+    switchToPersonalBeats() {
+      const { personalBeats } = get();
+      set({ beats: personalBeats });
+      console.log(`🔄 Переключение на личные биты (${personalBeats.length})`);
+    },
+
+    switchToGlobalBeats() {
+      const { globalBeats } = get();
+      set({ beats: globalBeats });
+      console.log(`🔄 Переключение на глобальные биты (${globalBeats.length})`);
     },
 
     isOwnStore() {
@@ -346,7 +433,7 @@ export const useApp = create<AppState>((set, get) => {
             await fetch(`${API_BASE}/api/users/${telegramId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ storeName: truncatedUsername }),
+              body: JSON.stringify({ username: truncatedUsername }),
             });
             console.log("✅ Ник сохранен в БД");
           } catch (e) {
@@ -385,6 +472,50 @@ export const useApp = create<AppState>((set, get) => {
       url.searchParams.delete("mode");
       url.searchParams.delete("seller");
       window.history.replaceState({}, "", url.toString());
+    },
+
+    async exitViewerMode() {
+      console.log("🚪 Выход из viewer mode");
+
+      const telegramId = get().telegramId;
+
+      // Очищаем viewed_producer_id в БД
+      if (telegramId) {
+        try {
+          await fetch(`${API_BASE}/api/users/${telegramId}/viewer-mode`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ viewed_producer_id: null }),
+          });
+          console.log("✅ Viewer mode очищен в БД");
+        } catch (e) {
+          console.error("❌ Ошибка при очистке viewer mode в БД:", e);
+        }
+      }
+
+      // Сбрасываем состояние viewer mode
+      set({
+        isViewerMode: false,
+        viewedProducer: null,
+        viewedProducerContactUsername: null,
+        viewedProducerBio: null,
+        viewedProducerAvatarUrl: null,
+        seller: get().me,
+        viewingOwnerId: get().me.id,
+      });
+
+      // Загружаем биты текущего пользователя в зависимости от роли
+      const role = get().session.role;
+
+      if (role === "producer" && telegramId) {
+        // Для продюсера загружаем его личные биты
+        get().loadBeats(telegramId);
+      } else if (role === "artist") {
+        // Для артиста загружаем глобальные биты
+        get().loadBeats(null);
+      }
+
+      console.log("✅ Viewer mode деактивирован, возврат в рабочий режим");
     },
 
     /* === ПЛЕЕР === */
@@ -606,8 +737,10 @@ export const useApp = create<AppState>((set, get) => {
         prices: payload.prices,
         coverUrl: payload.fileUrls.cover,
         mp3Url: payload.fileUrls.mp3,
+        mp3UntaggedUrl: payload.fileUrls.mp3Untagged || null,
         wavUrl: payload.fileUrls.wav,
         stemsUrl: payload.fileUrls.stems || "",
+        freeDownload: payload.freeDownload || false,
         authorId: me.id,
         authorName: me.storeName,
         authorSlug: me.slug,
@@ -638,10 +771,17 @@ export const useApp = create<AppState>((set, get) => {
       const licensesToUpdate: License[] = [];
       const currentLicenses = get().licenses;
 
+      console.log("🔍 Проверка дефолтных цен:", {
+        currentLicenses: currentLicenses.map(l => ({ id: l.id, defaultPrice: l.defaultPrice })),
+        payloadPrices: payload.prices
+      });
+
       currentLicenses.forEach((license) => {
         const priceValue = payload.prices[license.id];
+        console.log(`🔍 Лицензия ${license.id}: defaultPrice=${license.defaultPrice}, priceValue=${priceValue}`);
         // Если defaultPrice === null и цена указана, сохраняем как дефолтную
         if (license.defaultPrice === null && priceValue !== null && priceValue !== undefined) {
+          console.log(`✅ Сохраняем цену ${priceValue} как дефолтную для лицензии ${license.id}`);
           licensesToUpdate.push({
             ...license,
             defaultPrice: priceValue,
@@ -672,6 +812,32 @@ export const useApp = create<AppState>((set, get) => {
             console.error("❌ Ошибка сохранения дефолтных цен:", e);
           }
         }
+      }
+    },
+
+    async deleteBeat(beatId: string) {
+      const telegramId = get().telegramId;
+      if (!telegramId) {
+        console.error("❌ Нет telegramId для удаления бита");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/beats/${beatId}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to delete beat");
+        }
+
+        console.log("✅ Бит удален из БД:", beatId);
+
+        // Обновляем список битов после удаления
+        await get().loadBeats(telegramId);
+      } catch (e) {
+        console.error("❌ Ошибка при удалении бита:", e);
+        throw e;
       }
     },
 
@@ -713,13 +879,93 @@ export const useApp = create<AppState>((set, get) => {
           await fetch(`${API_BASE}/api/users/${telegramId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ storeName: name }),
+            body: JSON.stringify({ username: name }),
           });
           console.log("✅ Ник обновлен в БД:", name);
         } catch (e) {
           console.error("❌ Ошибка при обновлении ника в БД:", e);
         }
       }
+    },
+
+    /* === ПРОФИЛЬ: обновление bio и ссылок (сохраняет в БД) === */
+    async updateProfile(data) {
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        await fetch(`${API_BASE}/api/users/${telegramId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bio: data.bio,
+            instagram_url: data.instagramUrl,
+            youtube_url: data.youtubeUrl,
+            soundcloud_url: data.soundcloudUrl,
+            spotify_url: data.spotifyUrl,
+            contact_username: data.contactUsername,
+          }),
+        });
+        console.log("✅ Профиль обновлен в БД");
+      } catch (e) {
+        console.error("❌ Ошибка при обновлении профиля в БД:", e);
+        throw e;
+      }
+    },
+
+    /* === DEEPLINK === */
+    async loadDeeplink() {
+      const telegramId = get().telegramId;
+      if (!telegramId) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}/deeplink`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.deeplink) {
+            set({ deeplink: data.deeplink.custom_name });
+            console.log("✅ Deeplink загружен:", data.deeplink.custom_name);
+          }
+        }
+      } catch (e) {
+        console.error("❌ Ошибка загрузки deeplink:", e);
+      }
+    },
+
+    async updateDeeplink(customName: string) {
+      const telegramId = get().telegramId;
+      if (!telegramId) return { ok: false, error: "no-telegram-id" };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}/deeplink`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customName }),
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.deeplink) {
+          set({ deeplink: data.deeplink.custom_name });
+          console.log("✅ Deeplink обновлен:", data.deeplink.custom_name);
+          return { ok: true };
+        } else {
+          console.error("❌ Ошибка обновления deeplink:", data.error);
+          return { ok: false, error: data.error || "unknown-error" };
+        }
+      } catch (e) {
+        console.error("❌ Ошибка при обновлении deeplink:", e);
+        return { ok: false, error: "network-error" };
+      }
+    },
+
+    getFullDeeplinkUrl() {
+      const deeplink = get().deeplink;
+      if (!deeplink) return "";
+
+      // Используем новый формат Web App direct link
+      const botName = import.meta.env.VITE_BOT_NAME || "GridBeatStore_bot";
+      return `https://t.me/${botName}/app?startapp=${deeplink}`;
     },
 
     /* === УПРАВЛЕНИЕ ЛИЦЕНЗИЯМИ === */
@@ -906,6 +1152,10 @@ export const useApp = create<AppState>((set, get) => {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ role }),
             });
+
+            // Загружаем лицензии после смены роли на producer
+            await get().loadLicenses();
+            console.log("✅ Лицензии загружены после смены роли на producer");
           } catch (e) {
             console.error("Ошибка при смене роли:", e);
           }
@@ -949,8 +1199,8 @@ export const useApp = create<AppState>((set, get) => {
           saveSessionToLS(newUserSession);
           console.log("🎭 Установлена сессия для нового пользователя (артист)");
 
-          // Загружаем лицензии и корзину
-          useApp.getState().loadLicenses();
+          // Загружаем deeplink и корзину (лицензий у артистов нет)
+          useApp.getState().loadDeeplink();
           useApp.getState().loadCart();
 
         } else if (response.ok) {
@@ -958,19 +1208,19 @@ export const useApp = create<AppState>((set, get) => {
           const data = await response.json();
           console.log("✅ Пользователь найден в БД:", data.user);
           if (data.user) {
-            // Загружаем подписку пользователя
+            // Загружаем подписку (план) пользователя
             let userPlan: Plan = "free";
             try {
               const subResponse = await fetch(`${API_BASE}/api/users/${telegramData.telegramId}/subscription`);
               if (subResponse.ok) {
                 const subData = await subResponse.json();
-                if (subData.subscription?.subscription) {
-                  userPlan = subData.subscription.subscription.name.toLowerCase() as Plan;
-                  console.log("✅ Подписка загружена:", userPlan);
+                if (subData.subscription?.plan) {
+                  userPlan = subData.subscription.plan.name.toLowerCase() as Plan;
+                  console.log("✅ План загружен:", userPlan);
                 }
               }
             } catch (e) {
-              console.warn("⚠️ Ошибка загрузки подписки, используем Free:", e);
+              console.warn("⚠️ Ошибка загрузки плана, используем Free:", e);
             }
 
             // Обновляем данные пользователя из БД
@@ -986,20 +1236,111 @@ export const useApp = create<AppState>((set, get) => {
               isNewUser: false,
             };
 
+            // Сначала устанавливаем базовое состояние БЕЗ userInitialized
             useApp.setState({
               me: userFromDB,
               seller: userFromDB,
               session: existingUserSession,
-              userInitialized: true
             });
             saveSessionToLS(existingUserSession);
             console.log("🔄 Загружены данные пользователя из БД:", userFromDB);
 
-            // Загружаем лицензии для продюсера и корзину для всех
+            // Загружаем лицензии для продюсера, deeplink и корзину для всех
             if (existingUserSession.role === "producer") {
               useApp.getState().loadLicenses();
             }
+            useApp.getState().loadDeeplink();
             useApp.getState().loadCart();
+
+            // ===== DEEPLINK PROCESSING =====
+            // Проверяем startParam (переход по deeplink)
+            if (telegramData.startParam) {
+              console.log("🔗 Обработка deeplink из startParam:", telegramData.startParam);
+
+              try {
+                // Загружаем продюсера по deeplink
+                const deeplinkResponse = await fetch(`${API_BASE}/api/deeplink/${telegramData.startParam}`);
+                if (deeplinkResponse.ok) {
+                  const deeplinkData = await deeplinkResponse.json();
+                  if (deeplinkData.ok && deeplinkData.producer) {
+                    const producer = deeplinkData.producer;
+                    console.log("✅ Найден продюсер по deeplink:", producer);
+
+                    // Проверяем, не свой ли это deeplink
+                    if (producer.telegram_id === telegramData.telegramId) {
+                      console.log("ℹ️ Это свой deeplink, открываем в обычном режиме");
+                    } else {
+                      // Устанавливаем viewed_producer_id в БД
+                      await fetch(`${API_BASE}/api/users/${telegramData.telegramId}/viewer-mode`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ viewed_producer_id: producer.telegram_id }),
+                      });
+                      console.log("✅ viewed_producer_id установлен в БД");
+
+                      // Активируем viewer mode
+                      const viewedProducer: Seller = {
+                        id: `user:${producer.telegram_id}`,
+                        slug: producer.username || "producer",
+                        storeName: producer.username || "Producer",
+                        plan: "free" as Plan,
+                      };
+
+                      useApp.setState({
+                        isViewerMode: true,
+                        viewedProducer,
+                        viewedProducerContactUsername: producer.contact_username || null,
+                        viewedProducerBio: producer.bio || null,
+                        viewedProducerAvatarUrl: producer.avatar_url || null,
+                        seller: viewedProducer,
+                        viewingOwnerId: viewedProducer.id,
+                      });
+
+                      // Загружаем биты продюсера
+                      await useApp.getState().loadBeats(producer.telegram_id);
+                      console.log("✅ Guest mode активирован для продюсера:", producer.username);
+                    }
+                  }
+                } else {
+                  console.warn("⚠️ Deeplink не найден:", telegramData.startParam);
+                }
+              } catch (e) {
+                console.error("❌ Ошибка обработки deeplink:", e);
+              }
+
+              // Завершаем инициализацию после обработки startParam
+              useApp.setState({ userInitialized: true });
+            }
+            // Нет deeplink - обычный режим, очищаем viewed_producer_id если был
+            else {
+              console.log("ℹ️ Нет активного deeplink, обычный режим");
+
+              // Если в БД был viewed_producer_id (пользователь был в guest mode), очищаем его
+              if (data.user.viewed_producer_id) {
+                console.log("🧹 Очищаем viewed_producer_id при обычном открытии бота");
+                try {
+                  await fetch(`${API_BASE}/api/users/${telegramData.telegramId}/viewer-mode`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ viewed_producer_id: null }),
+                  });
+                  console.log("✅ viewed_producer_id очищен в БД");
+                } catch (e) {
+                  console.error("❌ Ошибка очистки viewed_producer_id:", e);
+                }
+              }
+
+              // Предзагружаем биты для плавного отображения (без "моргания")
+              if (existingUserSession.role === "artist") {
+                console.log("📦 Предзагрузка глобальных битов для артиста");
+                await useApp.getState().loadBeats(); // Загружаем глобальные биты
+              } else if (existingUserSession.role === "producer" && telegramData.telegramId) {
+                console.log("📦 Предзагрузка личных битов для продюсера");
+                await useApp.getState().loadBeats(telegramData.telegramId); // Загружаем личные биты
+              }
+
+              useApp.setState({ userInitialized: true });
+            }
           } else {
             console.warn("⚠️ Пользователь не найден в ответе, устанавливаем дефолтную сессию");
             useApp.setState({ userInitialized: true });

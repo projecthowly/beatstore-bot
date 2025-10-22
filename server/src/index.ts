@@ -15,7 +15,7 @@ import * as db from "./database.js";
 import { testConnection, pool } from "./db.js";
 
 // S3 Storage
-import { uploadToS3, getMimeType, generateS3Key } from "./s3.js";
+import { uploadToS3, getMimeType, generateS3Key, generateS3KeyForBeat, generateS3KeyForAvatar, deleteMultipleFromS3 } from "./s3.js";
 
 /* ===================== ENV ===================== */
 const PORT = Number(process.env.PORT || 8080);
@@ -62,9 +62,22 @@ const corsOptions: CorsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Статика React клиента (client/dist)
+// Статика React клиента (client/dist) с отключением кеша для HTML и JS
 const CLIENT_DIST = path.join(ROOT, "client", "dist");
-app.use(express.static(CLIENT_DIST));
+app.use(express.static(CLIENT_DIST, {
+  setHeaders: (res, filePath) => {
+    // Для HTML и JS файлов - запрещаем кеширование
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    // Для остальных файлов (изображения, шрифты) - разрешаем кеш на 1 час
+    else {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  }
+}));
 
 /* ---------- health ---------- */
 app.get("/health", (_req, res) => {
@@ -99,8 +112,8 @@ app.get("/api/users/:telegramId", async (req, res) => {
 /**
  * POST /api/users
  * Создать нового пользователя
- * Body: { telegram_id: number, username?: string, avatar_url?: string, role?: 'producer' | 'artist' | null }
- * Если role не указана - создаётся с role = NULL (пользователь ещё не выбрал роль)
+ * Body: { telegram_id: number, username?: string, avatar_url?: string, role?: 'producer' | 'artist' }
+ * Если role не указана - создаётся с role = "artist" (по умолчанию все новые пользователи артисты)
  */
 app.post("/api/users", async (req, res) => {
   try {
@@ -110,8 +123,11 @@ app.post("/api/users", async (req, res) => {
       return res.status(400).json({ ok: false, error: "missing-telegram-id" });
     }
 
-    // Проверка роли только если она передана
-    if (role !== undefined && role !== null && role !== "producer" && role !== "artist") {
+    // Роль по умолчанию - artist
+    const userRole = role || "artist";
+
+    // Проверка роли
+    if (userRole !== "producer" && userRole !== "artist") {
       return res.status(400).json({ ok: false, error: "invalid-role" });
     }
 
@@ -125,10 +141,11 @@ app.post("/api/users", async (req, res) => {
       telegram_id,
       username: username || null,
       avatar_url: avatar_url || null,
-      role: role || null, // NULL если не передана
+      role: userRole, // Всегда artist или producer
     });
 
-    console.log(`✅ Пользователь создан: telegram_id=${telegram_id}, role=${role || "NULL"}`);
+    // db.createUser уже создал deeplink и лицензии для продюсера
+    console.log(`✅ Пользователь создан: telegram_id=${telegram_id}, role=${userRole}`);
     res.json({ ok: true, user });
   } catch (e) {
     console.error("POST /api/users error:", e);
@@ -163,10 +180,26 @@ app.patch("/api/users/:telegramId/role", async (req, res) => {
       return res.status(400).json({ ok: false, error: "already-producer" });
     }
 
-    const updatedUser = await db.updateUser(user.id, { role });
+    // Обновляем роль напрямую через SQL (роль не входит в UpdateUserInput)
+    const updateResult = await pool.query(
+      "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+      [role, user.id]
+    );
+    const updatedUser = updateResult.rows[0];
 
     // Создаём дефолтные лицензии для нового продюсера
     await db.createDefaultLicenses(user.id);
+
+    // Создаём deeplink для нового продюсера (если еще нет)
+    const existingDeeplink = await db.getUserDeeplink(user.id);
+    if (!existingDeeplink) {
+      const deeplinkName = `user${telegramId}`;
+      await db.createDeeplink({
+        user_id: user.id,
+        custom_name: deeplinkName,
+      });
+      console.log(`✅ Создан deeplink для продюсера: ${deeplinkName}`);
+    }
 
     res.json({ ok: true, user: updatedUser });
   } catch (e) {
@@ -196,6 +229,14 @@ app.patch("/api/users/:telegramId", async (req, res) => {
       await db.createDefaultLicenses(user.id);
     }
 
+    // Если удаляется аватар (avatar_url установлен в null), удаляем файл из S3
+    if (req.body.avatar_url === null && user.avatar_url) {
+      console.log(`🗑️ Удаляем аватар из S3: ${user.avatar_url}`);
+      await deleteMultipleFromS3([user.avatar_url]).catch((e) => {
+        console.warn("⚠️ Не удалось удалить аватар из S3:", e);
+      });
+    }
+
     const updatedUser = await db.updateUser(user.id, req.body);
 
     res.json({ ok: true, user: updatedUser });
@@ -206,8 +247,152 @@ app.patch("/api/users/:telegramId", async (req, res) => {
 });
 
 /**
+ * GET /api/users/:telegramId/deeplink
+ * Получить deeplink пользователя
+ */
+app.get("/api/users/:telegramId/deeplink", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    const deeplink = await db.getUserDeeplink(user.id);
+    if (!deeplink) {
+      return res.status(404).json({ ok: false, error: "deeplink-not-found" });
+    }
+
+    res.json({ ok: true, deeplink });
+  } catch (e) {
+    console.error("GET /api/users/:telegramId/deeplink error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * PATCH /api/users/:telegramId/deeplink
+ * Обновить custom_name для deeplink
+ * Body: { customName: string }
+ */
+app.patch("/api/users/:telegramId/deeplink", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { customName } = req.body;
+    if (!customName || customName.length > 15 || !/^[a-zA-Z0-9_]+$/.test(customName)) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid-custom-name",
+        message: "Custom name must be 1-15 characters and contain only letters, numbers, and underscores"
+      });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Получаем текущий deeplink пользователя
+    const currentDeeplink = await db.getUserDeeplink(user.id);
+
+    // Проверяем, не занято ли имя (но только если это не текущее имя пользователя)
+    if (currentDeeplink?.custom_name !== customName) {
+      const exists = await db.checkDeeplinkExists(customName);
+      if (exists) {
+        return res.status(409).json({ ok: false, error: "custom-name-already-taken" });
+      }
+    }
+
+    const updatedDeeplink = await db.updateDeeplink(user.id, { custom_name: customName });
+    res.json({ ok: true, deeplink: updatedDeeplink });
+  } catch (e) {
+    console.error("PATCH /api/users/:telegramId/deeplink error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * GET /api/deeplink/:customName
+ * Получить продюсера по deeplink custom_name
+ */
+app.get("/api/deeplink/:customName", async (req, res) => {
+  try {
+    const { customName } = req.params;
+
+    const producer = await db.findUserByDeeplink(customName);
+    if (!producer) {
+      return res.status(404).json({ ok: false, error: "producer-not-found" });
+    }
+
+    res.json({ ok: true, producer });
+  } catch (e) {
+    console.error("GET /api/deeplink/:customName error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
+ * PATCH /api/users/:telegramId/viewer-mode
+ * Установить или очистить режим просмотра битстора продюсера (guest mode)
+ * Body: { viewed_producer_id: number | null }
+ * null = очистить режим просмотра (выход из guest mode)
+ * number = установить просмотр битстора продюсера
+ */
+app.patch("/api/users/:telegramId/viewer-mode", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    const { viewed_producer_id } = req.body;
+
+    // Проверка типа (должно быть number или null)
+    if (viewed_producer_id !== null && typeof viewed_producer_id !== "number") {
+      return res.status(400).json({ ok: false, error: "invalid-viewed-producer-id" });
+    }
+
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    let updatedUser;
+
+    if (viewed_producer_id === null) {
+      // Очистить режим просмотра
+      updatedUser = await db.clearViewedProducer(user.id);
+      console.log(`✅ Пользователь ${telegramId} вышел из guest mode`);
+    } else {
+      // Проверяем, что продюсер существует
+      const producer = await db.findUserByTelegramId(viewed_producer_id);
+      if (!producer || producer.role !== "producer") {
+        return res.status(404).json({ ok: false, error: "producer-not-found" });
+      }
+
+      // Устанавливаем режим просмотра
+      updatedUser = await db.setViewedProducer(user.id, producer.id);
+      console.log(`✅ Пользователь ${telegramId} вошел в guest mode для продюсера ${viewed_producer_id}`);
+    }
+
+    res.json({ ok: true, user: updatedUser });
+  } catch (e) {
+    console.error("PATCH /api/users/:telegramId/viewer-mode error:", e);
+    res.status(500).json({ ok: false, error: "server-error" });
+  }
+});
+
+/**
  * GET /api/users/:telegramId/subscription
- * Получить подписку пользователя
+ * Получить подписку (план) пользователя
  */
 app.get("/api/users/:telegramId/subscription", async (req, res) => {
   try {
@@ -221,7 +406,7 @@ app.get("/api/users/:telegramId/subscription", async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    const subscription = await db.getUserSubscription(user.id);
+    const subscription = await db.getUserPlan(user.id);
 
     res.json({ ok: true, subscription });
   } catch (e) {
@@ -232,7 +417,7 @@ app.get("/api/users/:telegramId/subscription", async (req, res) => {
 
 /**
  * GET /api/users/:telegramId/licenses
- * Получить настройки лицензий пользователя
+ * Получить лицензии продюсера
  */
 app.get("/api/users/:telegramId/licenses", async (req, res) => {
   try {
@@ -247,14 +432,15 @@ app.get("/api/users/:telegramId/licenses", async (req, res) => {
     }
 
     const result = await pool.query(
-      "SELECT license_key, license_name, default_price FROM user_license_settings WHERE user_id = $1",
+      "SELECT id, lic_key, name, default_price, incl_mp3, incl_wav, incl_stems FROM licenses WHERE user_id = $1 AND is_hidden = FALSE ORDER BY id ASC",
       [user.id]
     );
 
     const licenses = result.rows.map((row: any) => ({
-      id: row.license_key,
-      name: row.license_name,
+      id: row.lic_key,
+      name: row.name,
       defaultPrice: row.default_price ? parseFloat(row.default_price) : null,
+      fileType: (row.incl_stems ? "mp3_wav_stems" : row.incl_wav ? "mp3_wav" : row.incl_mp3 ? "untagged_mp3" : "mp3"),
     }));
 
     res.json({ ok: true, licenses });
@@ -266,7 +452,7 @@ app.get("/api/users/:telegramId/licenses", async (req, res) => {
 
 /**
  * PATCH /api/users/:telegramId/licenses
- * Обновить настройки лицензий пользователя
+ * Обновить лицензии продюсера
  */
 app.patch("/api/users/:telegramId/licenses", async (req, res) => {
   try {
@@ -285,18 +471,23 @@ app.patch("/api/users/:telegramId/licenses", async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    // Удаляем старые настройки
-    await pool.query("DELETE FROM user_license_settings WHERE user_id = $1", [user.id]);
+    console.log(`🔄 Обновление лицензий для пользователя ${user.id}, количество: ${licenses.length}`);
 
-    // Вставляем новые
+    // Обновляем/вставляем лицензии
     for (const lic of licenses) {
+      // Определяем состав файлов из fileType
+      const incl_mp3 = lic.fileType && lic.fileType.includes("mp3");
+      const incl_wav = lic.fileType && lic.fileType.includes("wav");
+      const incl_stems = lic.fileType && lic.fileType.includes("stems");
+
       await pool.query(
-        `INSERT INTO user_license_settings (user_id, license_key, license_name, default_price)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, license_key)
-         DO UPDATE SET license_name = $3, default_price = $4, updated_at = CURRENT_TIMESTAMP`,
-        [user.id, lic.id, lic.name, lic.defaultPrice]
+        `INSERT INTO licenses (user_id, lic_key, name, default_price, incl_mp3, incl_wav, incl_stems)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (user_id, lic_key)
+         DO UPDATE SET name = $3, default_price = $4, incl_mp3 = $5, incl_wav = $6, incl_stems = $7, updated_at = NOW()`,
+        [user.id, lic.id, lic.name, lic.defaultPrice, incl_mp3, incl_wav, incl_stems]
       );
+      console.log(`✅ Обновлена лицензия ${lic.id}: ${lic.name}, цена: ${lic.defaultPrice}`);
     }
 
     res.json({ ok: true });
@@ -349,7 +540,7 @@ app.get("/api/users/:telegramId/cart", async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    // Получаем корзину с информацией о битах и лицензиях
+    // Получаем корзину с информацией о битах и лицензиях (используем view v_beat_licenses)
     const result = await pool.query(
       `SELECT
         c.id,
@@ -357,12 +548,13 @@ app.get("/api/users/:telegramId/cart", async (req, res) => {
         c.license_id,
         c.added_at,
         b.title as beat_title,
+        l.lic_key as license_key,
         l.name as license_name,
-        bl.price as license_price
+        vbl.final_price as license_price
        FROM cart c
        JOIN beats b ON c.beat_id = b.id
        JOIN licenses l ON c.license_id = l.id
-       LEFT JOIN beat_licenses bl ON bl.beat_id = c.beat_id AND bl.license_id = c.license_id
+       LEFT JOIN v_beat_licenses vbl ON vbl.beat_id = c.beat_id AND vbl.license_id = c.license_id
        WHERE c.user_id = $1
        ORDER BY c.added_at DESC`,
       [user.id]
@@ -370,7 +562,7 @@ app.get("/api/users/:telegramId/cart", async (req, res) => {
 
     const cartItems = result.rows.map((row: any) => ({
       beatId: `beat_${row.beat_id}`,
-      license: row.license_id.toString(),
+      license: row.license_key,
       beatTitle: row.beat_title,
       licenseName: row.license_name,
       price: row.license_price ? parseFloat(row.license_price) : 0,
@@ -408,21 +600,45 @@ app.post("/api/users/:telegramId/cart", async (req, res) => {
 
     // Извлекаем числовой ID бита из строки "beat_123"
     const numericBeatId = parseInt(beatId.replace("beat_", ""), 10);
-    const numericLicenseId = parseInt(licenseId, 10);
 
-    if (isNaN(numericBeatId) || isNaN(numericLicenseId)) {
-      return res.status(400).json({ ok: false, error: "invalid-ids" });
+    if (isNaN(numericBeatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
     }
+
+    // licenseId теперь это lic_key ("basic", "premium", "unlimited")
+    // Находим автора бита
+    const beatResult = await pool.query(
+      "SELECT user_id FROM beats WHERE id = $1",
+      [numericBeatId]
+    );
+
+    if (beatResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    const beatAuthorId = beatResult.rows[0].user_id;
+
+    // Находим ID лицензии из таблицы licenses автора бита
+    const licenseResult = await pool.query(
+      "SELECT id FROM licenses WHERE user_id = $1 AND lic_key = $2",
+      [beatAuthorId, licenseId]
+    );
+
+    if (licenseResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "license-not-found" });
+    }
+
+    const userLicenseId = licenseResult.rows[0].id;
 
     // Добавляем в корзину (или игнорируем если уже есть из-за UNIQUE constraint)
     await pool.query(
       `INSERT INTO cart (user_id, beat_id, license_id)
        VALUES ($1, $2, $3)
        ON CONFLICT (user_id, beat_id, license_id) DO NOTHING`,
-      [user.id, numericBeatId, numericLicenseId]
+      [user.id, numericBeatId, userLicenseId]
     );
 
-    console.log(`✅ Добавлено в корзину: user=${user.id}, beat=${numericBeatId}, license=${numericLicenseId}`);
+    console.log(`✅ Добавлено в корзину: user=${user.id}, beat=${numericBeatId}, license=${licenseId}(${userLicenseId})`);
     res.json({ ok: true });
   } catch (e) {
     console.error("POST /api/users/:telegramId/cart error:", e);
@@ -454,19 +670,43 @@ app.delete("/api/users/:telegramId/cart", async (req, res) => {
 
     // Извлекаем числовой ID бита
     const numericBeatId = parseInt(beatId.replace("beat_", ""), 10);
-    const numericLicenseId = parseInt(licenseId, 10);
 
-    if (isNaN(numericBeatId) || isNaN(numericLicenseId)) {
-      return res.status(400).json({ ok: false, error: "invalid-ids" });
+    if (isNaN(numericBeatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
     }
+
+    // licenseId теперь это lic_key ("basic", "premium", "unlimited")
+    // Находим автора бита
+    const beatResult = await pool.query(
+      "SELECT user_id FROM beats WHERE id = $1",
+      [numericBeatId]
+    );
+
+    if (beatResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    const beatAuthorId = beatResult.rows[0].user_id;
+
+    // Находим ID лицензии из таблицы licenses автора бита
+    const licenseResult = await pool.query(
+      "SELECT id FROM licenses WHERE user_id = $1 AND lic_key = $2",
+      [beatAuthorId, licenseId]
+    );
+
+    if (licenseResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "license-not-found" });
+    }
+
+    const userLicenseId = licenseResult.rows[0].id;
 
     await pool.query(
       `DELETE FROM cart
        WHERE user_id = $1 AND beat_id = $2 AND license_id = $3`,
-      [user.id, numericBeatId, numericLicenseId]
+      [user.id, numericBeatId, userLicenseId]
     );
 
-    console.log(`✅ Удалено из корзины: user=${user.id}, beat=${numericBeatId}, license=${numericLicenseId}`);
+    console.log(`✅ Удалено из корзины: user=${user.id}, beat=${numericBeatId}, license=${licenseId}(${userLicenseId})`);
     res.json({ ok: true });
   } catch (e) {
     console.error("DELETE /api/users/:telegramId/cart error:", e);
@@ -512,11 +752,13 @@ app.get("/api/beats", async (req, res) => {
         b.id,
         b.title,
         b.bpm,
-        b.key,
-        b.cover_file_path as "coverUrl",
-        b.mp3_file_path as "mp3Url",
-        b.wav_file_path as "wavUrl",
-        b.stems_file_path as "stemsUrl",
+        b.key_sig as "key",
+        b.cover_url as "coverUrl",
+        b.mp3_tagged_url as "mp3Url",
+        b.mp3_untagged_url as "mp3UntaggedUrl",
+        b.wav_url as "wavUrl",
+        b.stems_url as "stemsUrl",
+        b.free_download,
         b.views_count,
         b.sales_count,
         b.created_at,
@@ -525,15 +767,15 @@ app.get("/api/beats", async (req, res) => {
         u.telegram_id as author_telegram_id,
         json_agg(
           json_build_object(
-            'licenseKey', bl.license_id::text,
-            'licenseName', l.name,
-            'price', bl.price
+            'license_key', l.lic_key,
+            'license_name', l.name,
+            'price', COALESCE(blp.price, l.default_price)
           )
-        ) FILTER (WHERE bl.id IS NOT NULL) as licenses
+        ) FILTER (WHERE l.id IS NOT NULL AND l.is_hidden = FALSE) as licenses
       FROM beats b
       LEFT JOIN users u ON b.user_id = u.id
-      LEFT JOIN beat_licenses bl ON b.id = bl.beat_id
-      LEFT JOIN licenses l ON bl.license_id = l.id
+      LEFT JOIN licenses l ON l.user_id = b.user_id
+      LEFT JOIN bl_prices blp ON blp.beat_id = b.id AND blp.license_id = l.id
     `;
 
     // Если указан userId, фильтруем по пользователю
@@ -550,35 +792,228 @@ app.get("/api/beats", async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    const beats = result.rows.map((row: any) => ({
-      id: `beat_${row.id}`,
-      title: row.title,
-      key: row.key,
-      bpm: row.bpm,
-      coverUrl: row.coverUrl,
-      files: {
-        mp3: row.mp3Url,
-        wav: row.wavUrl,
-        stems: row.stemsUrl || "",
-      },
-      prices: (row.licenses || []).reduce((acc: any, lic: any) => {
-        acc[lic.licenseKey] = {
-          name: lic.licenseName,
-          price: parseFloat(lic.price)
-        };
+    console.log(`🔍 SQL вернул ${result.rows.length} битов`);
+    if (result.rows.length > 0) {
+      console.log(`🔍 Первый бит:`, {
+        id: result.rows[0].id,
+        title: result.rows[0].title,
+        licenses: result.rows[0].licenses
+      });
+    }
+
+    const beats = result.rows.map((row: any) => {
+      console.log(`🔍 Обрабатываем бит ${row.id} "${row.title}":`, {
+        licenses: row.licenses,
+        licensesType: typeof row.licenses,
+        licensesIsArray: Array.isArray(row.licenses)
+      });
+
+      const prices = (row.licenses || []).reduce((acc: any, lic: any) => {
+        const key = lic.license_key;
+        const name = lic.license_name;
+
+        if (key) {
+          acc[key] = {
+            name: name || null,
+            price: lic.price ? parseFloat(lic.price) : null
+          };
+        }
         return acc;
-      }, {}),
-      author: row.author_id ? {
-        id: `user:${row.author_telegram_id}`,
-        name: row.author_name || "Unknown",
-        slug: row.author_name?.toLowerCase().replace(/\s+/g, "-") || "unknown",
-      } : null,
-    }));
+      }, {});
+
+      return {
+        id: `beat_${row.id}`,
+        title: row.title,
+        key: row.key,
+        bpm: row.bpm,
+        coverUrl: row.coverUrl,
+        files: {
+          mp3: row.mp3Url,
+          mp3Untagged: row.mp3UntaggedUrl || null,
+          wav: row.wavUrl,
+          stems: row.stemsUrl || "",
+        },
+        prices,
+        freeDownload: row.free_download || false,
+        author: row.author_id ? {
+          id: `user:${row.author_telegram_id}`,
+          name: row.author_name || "Unknown",
+          slug: row.author_name?.toLowerCase().replace(/\s+/g, "-") || "unknown",
+        } : null,
+      };
+    });
 
     res.json({ ok: true, beats });
   } catch (e) {
     console.error("GET /api/beats error:", e);
     res.status(500).json({ ok: false, error: "read-failed" });
+  }
+});
+
+/**
+ * PATCH /api/beats/:beatId/prices
+ * Обновить цены лицензий для бита
+ */
+app.patch("/api/beats/:beatId/prices", async (req, res) => {
+  try {
+    const beatIdParam = req.params.beatId;
+    const beatId = beatIdParam.startsWith("beat_")
+      ? parseInt(beatIdParam.replace("beat_", ""), 10)
+      : parseInt(beatIdParam, 10);
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    const prices = req.body?.prices;
+    if (!prices || typeof prices !== "object") {
+      return res.status(400).json({ ok: false, error: "invalid-prices" });
+    }
+
+    console.log(`💰 Обновление цен для бита ${beatId}:`, prices);
+
+    // Получаем бит из БД
+    const beat = await db.getBeatById(beatId);
+    if (!beat) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    // Обновляем цены для каждой лицензии
+    // prices = { "basic": 10, "premium": 20, ... } или { "1": 10, "2": 20, ... }
+    for (const [licenseKey, price] of Object.entries(prices)) {
+      if (typeof price !== "number") continue;
+
+      // Пытаемся найти license_id по ключу (строковому или числовому)
+      let licenseId: number | null = null;
+
+      // Сначала проверяем, является ли ключ числом
+      const numericId = parseInt(licenseKey, 10);
+      if (!isNaN(numericId)) {
+        licenseId = numericId;
+      } else {
+        // Если ключ строковый (например, 'basic', 'premium'), ищем в таблице licenses
+        const licenseResult = await pool.query(
+          `SELECT id FROM licenses WHERE user_id = $1 AND lic_key = $2`,
+          [beat.user_id, licenseKey]
+        );
+        if (licenseResult.rows.length > 0) {
+          licenseId = licenseResult.rows[0].id;
+        }
+      }
+
+      if (!licenseId) {
+        console.warn(`⚠️ Не найдена лицензия для ключа "${licenseKey}"`);
+        continue;
+      }
+
+      // Используем UPSERT для bl_prices
+      await pool.query(
+        `INSERT INTO bl_prices (beat_id, license_id, price)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (beat_id, license_id)
+         DO UPDATE SET price = $3, updated_at = NOW()`,
+        [beatId, licenseId, price]
+      );
+    }
+
+    console.log(`✅ Цены обновлены для бита ${beatId}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /api/beats/:beatId/prices error:", e);
+    res.json({ ok: false, error: "update-failed" });
+  }
+});
+
+/**
+ * DELETE /api/beats/:beatId
+ * Удалить бит
+ */
+app.delete("/api/beats/:beatId", async (req, res) => {
+  try {
+    const beatIdParam = req.params.beatId;
+    const beatId = beatIdParam.startsWith("beat_")
+      ? parseInt(beatIdParam.replace("beat_", ""), 10)
+      : parseInt(beatIdParam, 10);
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    console.log(`🗑️ Удаление бита ${beatId}`);
+
+    // Проверяем существование бита
+    const beat = await db.getBeatById(beatId);
+    if (!beat) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    // Собираем URL файлов для удаления из S3
+    const filesToDelete: string[] = [];
+    if (beat.cover_url) filesToDelete.push(beat.cover_url);
+    if (beat.mp3_tagged_url) filesToDelete.push(beat.mp3_tagged_url);
+    if (beat.mp3_untagged_url) filesToDelete.push(beat.mp3_untagged_url);
+    if (beat.wav_url) filesToDelete.push(beat.wav_url);
+    if (beat.stems_url) filesToDelete.push(beat.stems_url);
+
+    // Удаляем бит из БД (каскадно удалятся связанные записи)
+    await db.deleteBeat(beatId);
+
+    // Удаляем файлы из S3 (асинхронно, не блокируя ответ)
+    if (filesToDelete.length > 0) {
+      console.log(`🗑️ Удаление ${filesToDelete.length} файлов из S3...`);
+      deleteMultipleFromS3(filesToDelete).then((deletedCount) => {
+        console.log(`✅ Удалено файлов из S3: ${deletedCount}/${filesToDelete.length}`);
+      }).catch((error) => {
+        console.error(`❌ Ошибка при удалении файлов из S3:`, error);
+      });
+    }
+
+    console.log(`✅ Бит ${beatId} успешно удален из БД`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /api/beats/:beatId error:", e);
+    res.status(500).json({ ok: false, error: "delete-failed" });
+  }
+});
+
+/**
+ * PATCH /api/beats/:beatId
+ * Обновить метаданные бита (title, bpm, key, freeDownload)
+ */
+app.patch("/api/beats/:beatId", async (req, res) => {
+  try {
+    const beatIdParam = req.params.beatId;
+    const beatId = beatIdParam.startsWith("beat_")
+      ? parseInt(beatIdParam.replace("beat_", ""), 10)
+      : parseInt(beatIdParam, 10);
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    const { title, bpm, key, freeDownload } = req.body;
+
+    console.log(`📝 Обновление бита ${beatId}:`, { title, bpm, key, freeDownload });
+
+    // Проверяем существование бита
+    const beat = await db.getBeatById(beatId);
+    if (!beat) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    // Обновляем бит
+    await db.updateBeat(beatId, {
+      title: title?.trim(),
+      bpm,
+      key_sig: key,
+      free_download: freeDownload !== undefined ? freeDownload : undefined,
+    });
+
+    console.log(`✅ Бит ${beatId} успешно обновлен`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PATCH /api/beats/:beatId error:", e);
+    res.status(500).json({ ok: false, error: "update-failed" });
   }
 });
 
@@ -591,33 +1026,172 @@ app.post(
     try {
       const file = req.file;
       const fileType = req.body?.type || "unknown"; // cover, mp3, wav, stems
+      const telegramId = req.body?.telegramId; // ID пользователя в Telegram
+      const beatTitle = req.body?.beatTitle || "untitled"; // Название бита
 
       if (!file) {
         return res.status(400).json({ ok: false, error: "no-file" });
       }
 
-      console.log(`📤 Immediate upload: ${file.originalname} (${fileType})`);
+      if (!telegramId) {
+        return res.status(400).json({ ok: false, error: "no-telegram-id" });
+      }
 
-      // Определяем папку по типу файла
-      let folder = "audio"; // по умолчанию
-      if (fileType === "cover") folder = "covers";
-      else if (fileType === "mp3") folder = "audio/mp3";
-      else if (fileType === "wav") folder = "audio/wav";
-      else if (fileType === "stems") folder = "stems";
+      console.log(`📤 Immediate upload: ${file.originalname} (${fileType}) for user ${telegramId}, beat: ${beatTitle}`);
+
+      // Получаем данные пользователя
+      const user = await db.findUserByTelegramId(parseInt(telegramId, 10));
+      if (!user) {
+        return res.status(404).json({ ok: false, error: "user-not-found" });
+      }
+
+      const username = user.username || `user${telegramId}`;
+
+      // Генерируем S3 ключ с новой структурой папок
+      const s3Key = generateS3KeyForBeat(
+        username,
+        parseInt(telegramId, 10),
+        beatTitle,
+        file.originalname
+      );
 
       // Загружаем на S3
       const url = await uploadToS3(
         file.path,
-        generateS3Key(folder, file.originalname),
+        s3Key,
         getMimeType(file.originalname)
       );
+
+      // Если это WAV файл, создаем MP3 без тега для лицензий
+      let mp3UntaggedUrl = null;
+      if (fileType === "wav") {
+        console.log(`🎵 WAV файл обнаружен, создаем MP3 без тега...`);
+
+        try {
+          const { convertWavToUntaggedMp3 } = await import("./audio-converter.js");
+
+          // Путь для MP3 без тега
+          const mp3UntaggedPath = file.path.replace(/\.(wav|WAV)$/, "_untagged.mp3");
+
+          // Конвертируем WAV → MP3 без тега
+          await convertWavToUntaggedMp3(file.path, mp3UntaggedPath);
+
+          // Загружаем MP3 без тега на S3
+          const mp3UntaggedS3Key = s3Key.replace(/\.(wav|WAV)$/, "_untagged.mp3");
+          mp3UntaggedUrl = await uploadToS3(
+            mp3UntaggedPath,
+            mp3UntaggedS3Key,
+            "audio/mpeg"
+          );
+
+          // Удаляем временный MP3 файл
+          await fs.unlink(mp3UntaggedPath).catch(() => {});
+
+          console.log(`✅ MP3 без тега создан: ${mp3UntaggedUrl}`);
+        } catch (e) {
+          console.error(`❌ Ошибка создания MP3 без тега:`, e);
+          // Не прерываем процесс, просто логируем ошибку
+        }
+      }
 
       // Удаляем временный файл
       await fs.unlink(file.path).catch(() => {});
 
-      res.json({ ok: true, url });
+      res.json({
+        ok: true,
+        url,
+        mp3UntaggedUrl // Вернем URL MP3 без тега (если был создан)
+      });
     } catch (e) {
       console.error("POST /api/upload-file error:", e);
+      res.status(500).json({ ok: false, error: "upload-failed" });
+    }
+  }
+);
+
+/* ---------- POST /api/cleanup-temp-files ---------- */
+// Удаление временных файлов из S3 (когда пользователь закрывает модалку без сохранения)
+app.post("/api/cleanup-temp-files", express.json(), async (req, res) => {
+  try {
+    const { urls } = req.body;
+
+    if (!urls || !Array.isArray(urls)) {
+      return res.status(400).json({ ok: false, error: "invalid-urls" });
+    }
+
+    console.log(`🗑️ Удаление ${urls.length} временных файлов...`);
+
+    // Удаляем все файлы
+    await deleteMultipleFromS3(urls);
+
+    console.log(`✅ Временные файлы удалены`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("POST /api/cleanup-temp-files error:", e);
+    res.status(500).json({ ok: false, error: "cleanup-failed" });
+  }
+});
+
+/* ---------- POST /api/upload-avatar ---------- */
+// Загрузка аватара пользователя
+app.post(
+  "/api/upload-avatar",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const file = req.file;
+      const telegramId = req.body?.telegramId;
+
+      if (!file) {
+        return res.status(400).json({ ok: false, error: "no-file" });
+      }
+
+      if (!telegramId) {
+        return res.status(400).json({ ok: false, error: "no-telegram-id" });
+      }
+
+      console.log(`📤 Avatar upload for user ${telegramId}`);
+
+      // Получаем данные пользователя
+      const user = await db.findUserByTelegramId(parseInt(telegramId, 10));
+      if (!user) {
+        return res.status(404).json({ ok: false, error: "user-not-found" });
+      }
+
+      // Удаляем старый аватар из S3, если он есть
+      if (user.avatar_url) {
+        console.log(`🗑️ Удаляем старый аватар из S3: ${user.avatar_url}`);
+        await deleteMultipleFromS3([user.avatar_url]).catch((e) => {
+          console.warn("⚠️ Не удалось удалить старый аватар:", e);
+        });
+      }
+
+      const username = user.username || `user${telegramId}`;
+
+      // Генерируем S3 ключ для аватара
+      const s3Key = generateS3KeyForAvatar(
+        username,
+        parseInt(telegramId, 10),
+        file.originalname
+      );
+
+      // Загружаем на S3
+      const url = await uploadToS3(
+        file.path,
+        s3Key,
+        getMimeType(file.originalname)
+      );
+
+      // Обновляем avatar_url в БД
+      await db.updateUser(user.id, { avatar_url: url });
+
+      // Удаляем временный файл
+      await fs.unlink(file.path).catch(() => {});
+
+      console.log(`✅ Новый аватар загружен: ${url}`);
+      res.json({ ok: true, url });
+    } catch (e) {
+      console.error("POST /api/upload-avatar error:", e);
       res.status(500).json({ ok: false, error: "upload-failed" });
     }
   }
@@ -636,6 +1210,7 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
       prices = typeof req.body?.prices === "string"
         ? JSON.parse(req.body.prices)
         : (req.body?.prices || {});
+      console.log(`📋 Полученные цены:`, prices);
     } catch (e) {
       console.warn("⚠️ Не удалось распарсить prices:", e);
     }
@@ -645,15 +1220,19 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
 
     // URL файлов (уже загружены через /api/upload-file)
     const coverUrl = String(req.body?.coverUrl || "").trim();
-    const mp3Url = String(req.body?.mp3Url || "").trim();
+    const mp3Url = String(req.body?.mp3Url || "").trim(); // MP3 с тегом
+    const mp3UntaggedUrl = String(req.body?.mp3UntaggedUrl || "").trim(); // MP3 без тега (авто-созданный)
     const wavUrl = String(req.body?.wavUrl || "").trim();
     const stemsUrl = String(req.body?.stemsUrl || "").trim();
+
+    // Бесплатное скачивание
+    const freeDownload = Boolean(req.body?.freeDownload);
 
     if (!title || !bpm || !coverUrl || !mp3Url || !wavUrl || !authorId) {
       return res.status(400).json({ ok: false, error: "required-missing" });
     }
 
-    console.log(`✅ Creating beat "${title}" with pre-uploaded files`);
+    console.log(`✅ Creating beat "${title}" with pre-uploaded files, free_download=${freeDownload}`);
 
     // Получаем user_id из authorId (формат: "user:781620101")
     const telegramId = authorId.startsWith("user:")
@@ -665,47 +1244,63 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    // Создаём бит в БД (key - зарезервированное слово, экранируем кавычками)
+    // Создаём бит в БД (key_sig вместо key, новые названия полей)
     const beatResult = await pool.query(
-      `INSERT INTO beats (user_id, title, bpm, "key", cover_file_path, mp3_file_path, wav_file_path, stems_file_path)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO beats (user_id, title, bpm, key_sig, cover_url, mp3_tagged_url, mp3_untagged_url, wav_url, stems_url, free_download)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
-      [user.id, title, bpm, beatKey, coverUrl, mp3Url, wavUrl, stemsUrl || null]
+      [user.id, title, bpm, beatKey, coverUrl, mp3Url, mp3UntaggedUrl || null, wavUrl, stemsUrl || null, freeDownload]
     );
 
     const beatId = beatResult.rows[0].id;
 
     // Сохраняем цены лицензий
-    // license_key (basic/premium) → находим глобальную лицензию по имени
-    for (const [licenseKey, price] of Object.entries(prices)) {
-      if (price && typeof price === "number") {
-        // Проверяем что у пользователя есть эта лицензия в настройках
-        const userLicenseCheck = await pool.query(
-          "SELECT license_name FROM user_license_settings WHERE user_id = $1 AND license_key = $2 LIMIT 1",
-          [user.id, licenseKey]
-        );
+    // Клиент отправляет: { basic: 12, premium: 233 }
+    // где ключи - это lic_key из таблицы licenses
+    console.log(`🔍 Начинаем сохранение цен для бита ${beatId}, user.id=${user.id}`);
+    for (const [licenseKey, priceValue] of Object.entries(prices)) {
+      console.log(`🔍 Обрабатываем лицензию: ${licenseKey} = ${priceValue} (type: ${typeof priceValue})`);
 
-        if (userLicenseCheck.rows.length > 0) {
-          const licenseName = userLicenseCheck.rows[0].license_name;
-
-          // Находим глобальную лицензию по имени
-          const globalLicenseResult = await pool.query(
-            "SELECT id FROM licenses WHERE name = $1 AND is_global = true LIMIT 1",
-            [licenseName]
+      if (priceValue && typeof priceValue === "number" && priceValue > 0) {
+        try {
+          // Находим лицензию у пользователя
+          const userLicenseResult = await pool.query(
+            "SELECT id FROM licenses WHERE user_id = $1 AND lic_key = $2 LIMIT 1",
+            [user.id, licenseKey]
           );
 
-          if (globalLicenseResult.rows.length > 0) {
-            const globalLicenseId = globalLicenseResult.rows[0].id;
-            await pool.query(
-              `INSERT INTO beat_licenses (beat_id, license_id, price)
+          console.log(`🔍 Найдено лицензий: ${userLicenseResult.rows.length}`, userLicenseResult.rows);
+
+          if (userLicenseResult.rows.length > 0) {
+            const userLicenseId = userLicenseResult.rows[0].id;
+            console.log(`🔍 Вставляем в bl_prices: beatId=${beatId}, licenseId=${userLicenseId}, price=${priceValue}`);
+
+            const insertResult = await pool.query(
+              `INSERT INTO bl_prices (beat_id, license_id, price)
                VALUES ($1, $2, $3)
-               ON CONFLICT (beat_id, license_id) DO UPDATE SET price = $3`,
-              [beatId, globalLicenseId, price]
+               ON CONFLICT (beat_id, license_id) DO UPDATE SET price = $3
+               RETURNING beat_id`,
+              [beatId, userLicenseId, priceValue]
             );
+
+            console.log(`✅ Цена для лицензии "${licenseKey}": ${priceValue}`);
+          } else {
+            console.warn(`⚠️ Лицензия с ключом "${licenseKey}" не найдена у пользователя ${user.id}`);
           }
+        } catch (e) {
+          console.error(`❌ Ошибка при сохранении цены для лицензии "${licenseKey}":`, e);
         }
+      } else {
+        console.log(`⏭️ Пропускаем лицензию "${licenseKey}": некорректное значение`);
       }
     }
+
+    // Проверяем что сохранилось
+    const savedLicenses = await pool.query(
+      "SELECT * FROM bl_prices WHERE beat_id = $1",
+      [beatId]
+    );
+    console.log(`🔍 Сохранено цен для бита ${beatId}: ${savedLicenses.rows.length}`, savedLicenses.rows);
 
     console.log(`✅ Beat "${title}" created successfully (ID: ${beatId})`);
 
@@ -719,6 +1314,7 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
         coverUrl,
         files: { mp3: mp3Url, wav: wavUrl, stems: stemsUrl },
         prices,
+        freeDownload: freeDownload,
         author: {
           id: authorId,
           name: user.username || "Unknown",
@@ -731,6 +1327,102 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
     res.status(500).json({ ok: false, error: "upload-failed" });
   }
 });
+
+/* ---------- GET /api/beats/:beatId/free-download ---------- */
+// Бесплатное скачивание MP3 с тегом
+app.get("/api/beats/:beatId/free-download", async (req, res) => {
+  try {
+    const beatId = parseInt(req.params.beatId, 10);
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    // Получаем данные бита
+    const beatResult = await pool.query(
+      `SELECT b.*, u.username
+       FROM beats b
+       JOIN users u ON b.user_id = u.id
+       WHERE b.id = $1`,
+      [beatId]
+    );
+
+    if (beatResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    const beat = beatResult.rows[0];
+
+    // Проверяем что бесплатное скачивание разрешено
+    if (!beat.free_download) {
+      return res.status(403).json({ ok: false, error: "free-download-not-allowed" });
+    }
+
+    // Проверяем что файл существует
+    if (!beat.mp3_tagged_url) {
+      return res.status(404).json({ ok: false, error: "file-not-found" });
+    }
+
+    // Увеличиваем счетчик бесплатных скачиваний
+    await pool.query(
+      `UPDATE beats SET free_dl_count = free_dl_count + 1 WHERE id = $1`,
+      [beatId]
+    );
+
+    // Генерируем имя файла: @username BPM KEY - title.mp3
+    const { generateFreeDownloadFilename } = await import("./audio-converter.js");
+    const filename = generateFreeDownloadFilename(
+      beat.username || "producer",
+      beat.title,
+      beat.bpm,
+      beat.key_sig
+    );
+
+    console.log(`📥 Бесплатное скачивание: ${filename}.mp3 (beat_id: ${beatId})`);
+
+    // Возвращаем URL файла с правильным именем для скачивания
+    res.json({
+      ok: true,
+      downloadUrl: beat.mp3_tagged_url,
+      filename: `${filename}.mp3`
+    });
+  } catch (e) {
+    console.error("GET /api/beats/:beatId/free-download error:", e);
+    res.status(500).json({ ok: false, error: "download-failed" });
+  }
+});
+
+/* ===================== Telegram (опционально) ===================== */
+let bot: Telegraf | null = null;
+async function initBot() {
+  if (!BOT_TOKEN) {
+    console.log("🤖 BOT_TOKEN не задан — бот не запускается (это ок для локального API).");
+    return null;
+  }
+  try {
+    // @ts-ignore
+    const b = createBot(BOT_TOKEN, WEBAPP_URL);
+    bot = b as unknown as Telegraf;
+
+    if (BASE_URL) {
+      const webhookPath = `/webhook/${b.secretPathComponent()}`;
+      // ВАЖНО: Регистрируем webhook route ДО catchall route
+      // Используем POST вместо use, так как Telegram отправляет POST запросы
+      // @ts-ignore
+      app.post(webhookPath, b.webhookCallback(webhookPath));
+      console.log("✅ Webhook route зарегистрирован (POST):", webhookPath);
+      return { bot: b, webhookPath };
+    } else {
+      return { bot: b, webhookPath: null };
+    }
+  } catch (e) {
+    console.error("❌ Ошибка создания бота:", e);
+    return null;
+  }
+}
+
+// Инициализируем бота СИНХРОННО перед catchall route
+const botInfo = await initBot();
 
 /* ---------- SPA Fallback для React Router ---------- */
 // Все неизвестные маршруты отдают index.html (должно быть в конце!)
@@ -756,44 +1448,38 @@ const server = app.listen(PORT, async () => {
     console.log("✅ PostgreSQL подключен");
   }
   console.log("");
-});
 
-/* ===================== Telegram (опционально) ===================== */
-let bot: Telegraf | null = null;
-async function startBot() {
-  if (!BOT_TOKEN) {
-    console.log("🤖 BOT_TOKEN не задан — бот не запускается (это ок для локального API).");
-    return;
-  }
-  try {
-    // @ts-ignore
-    const b = createBot(BOT_TOKEN, WEBAPP_URL);
-    bot = b as unknown as Telegraf;
-
-    if (BASE_URL) {
-      const webhookPath = `/webhook/${b.secretPathComponent()}`;
+  // Устанавливаем webhook только ПОСЛЕ запуска сервера
+  if (botInfo && botInfo.webhookPath) {
+    try {
       // @ts-ignore
-      await b.telegram.setWebhook(`${BASE_URL}${webhookPath}`);
+      await botInfo.bot.telegram.setWebhook(`${BASE_URL}${botInfo.webhookPath}`);
+      console.log("✅ Webhook установлен:", `${BASE_URL}${botInfo.webhookPath}`);
+    } catch (e) {
+      console.error("❌ Ошибка установки webhook:", e);
+    }
+  } else if (botInfo && !botInfo.webhookPath) {
+    try {
       // @ts-ignore
-      app.use(webhookPath, b.webhookCallback(webhookPath));
-      console.log("✅ Webhook установлен:", `${BASE_URL}${webhookPath}`);
-    } else {
+      await botInfo.bot.telegram.deleteWebhook().catch(() => {});
       // @ts-ignore
-      await b.telegram.deleteWebhook().catch(() => {});
-      // @ts-ignore
-      await b.launch();
+      await botInfo.bot.launch();
       console.log("✅ Bot: long polling");
+    } catch (e) {
+      console.error("❌ Ошибка запуска бота в polling режиме:", e);
     }
-
-    if (WEBAPP_URL) {
-      // @ts-ignore
-      await setMenuButton(b, "Open", WEBAPP_URL);
-    }
-  } catch (e) {
-    console.error("❌ Бот не запустился:", e);
   }
-}
-startBot().catch(console.error);
+
+  // Устанавливаем Menu Button
+  if (botInfo && WEBAPP_URL) {
+    try {
+      // @ts-ignore
+      await setMenuButton(botInfo.bot, "Open", WEBAPP_URL);
+    } catch (e) {
+      console.error("❌ Ошибка установки Menu Button:", e);
+    }
+  }
+});
 
 process.on("SIGINT", () => { try { server.close(); } catch {} try { /* @ts-ignore */ bot?.stop?.("SIGINT"); } catch {} process.exit(0); });
 process.on("SIGTERM", () => { try { server.close(); } catch {} try { /* @ts-ignore */ bot?.stop?.("SIGTERM"); } catch {} process.exit(0); });
