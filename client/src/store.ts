@@ -457,7 +457,7 @@ export const useApp = create<AppState>((set, get) => {
       const telegramId = get().telegramId;
       if (telegramId) {
         try {
-          await fetch(`${API_BASE}/api/users/${telegramId}`, {
+          await fetch(`${API_BASE}/api/users/${telegramId}/role`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ role: "producer" }),
