@@ -84,13 +84,22 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 
 /**
  * Создать дефолтные лицензии для нового продюсера
+ * Free план: 2 лицензии (Basic, Premium)
+ * Basic/Pro план: 3 лицензии (Basic, Premium, Unlimited)
  */
 export async function createDefaultLicenses(userId: number): Promise<void> {
+  // Получаем план пользователя
+  const userPlan = await getUserPlan(userId);
+  const planCode = userPlan?.plan?.code || "Free";
+
+  // Определяем, сколько лицензий создавать
+  const licensesToCreate = planCode === "Free" ? 2 : 3;
+
   const defaultLicenses = [
     {
       lic_key: "basic",
       name: "Basic License",
-      incl_mp3: false,
+      incl_mp3: true,
       incl_wav: false,
       incl_stems: false,
       default_price: null,
@@ -100,14 +109,25 @@ export async function createDefaultLicenses(userId: number): Promise<void> {
       lic_key: "premium",
       name: "Premium License",
       incl_mp3: true,
-      incl_wav: false,
+      incl_wav: true,
       incl_stems: false,
+      default_price: null,
+      min_price: null,
+    },
+    {
+      lic_key: "unlimited",
+      name: "Unlimited License",
+      incl_mp3: true,
+      incl_wav: true,
+      incl_stems: true,
       default_price: null,
       min_price: null,
     },
   ];
 
-  for (const lic of defaultLicenses) {
+  // Создаем только нужное количество лицензий
+  for (let i = 0; i < licensesToCreate; i++) {
+    const lic = defaultLicenses[i];
     await pool.query(
       `INSERT INTO licenses (user_id, lic_key, name, incl_mp3, incl_wav, incl_stems, default_price, min_price)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -124,6 +144,8 @@ export async function createDefaultLicenses(userId: number): Promise<void> {
       ]
     );
   }
+
+  console.log(`✅ Создано ${licensesToCreate} дефолтных лицензий для пользователя ${userId} (план: ${planCode})`);
 }
 
 /**

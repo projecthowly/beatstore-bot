@@ -112,12 +112,12 @@ app.get("/api/users/:telegramId", async (req, res) => {
 /**
  * POST /api/users
  * Создать нового пользователя
- * Body: { telegram_id: number, username?: string, avatar_url?: string, role?: 'producer' | 'artist' }
+ * Body: { telegram_id: number, username?: string, display_name?: string, avatar_url?: string, role?: 'producer' | 'artist' }
  * Если role не указана - создаётся с role = "artist" (по умолчанию все новые пользователи артисты)
  */
 app.post("/api/users", async (req, res) => {
   try {
-    const { telegram_id, username, avatar_url, role } = req.body;
+    const { telegram_id, username, display_name, avatar_url, role } = req.body;
 
     if (!telegram_id) {
       return res.status(400).json({ ok: false, error: "missing-telegram-id" });
@@ -140,12 +140,13 @@ app.post("/api/users", async (req, res) => {
     const user = await db.createUser({
       telegram_id,
       username: username || null,
+      display_name: display_name || null,
       avatar_url: avatar_url || null,
       role: userRole, // Всегда artist или producer
     });
 
     // db.createUser уже создал deeplink и лицензии для продюсера
-    console.log(`✅ Пользователь создан: telegram_id=${telegram_id}, role=${userRole}`);
+    console.log(`✅ Пользователь создан: telegram_id=${telegram_id}, username=${username}, display_name=${display_name}, role=${userRole}`);
     res.json({ ok: true, user });
   } catch (e) {
     console.error("POST /api/users error:", e);
