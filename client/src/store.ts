@@ -469,6 +469,10 @@ export const useApp = create<AppState>((set, get) => {
             body: JSON.stringify({ role: "producer" }),
           });
           console.log("✅ Роль обновлена в БД: producer");
+
+          // Загружаем deeplink после смены роли
+          await get().loadDeeplink();
+          console.log("✅ Deeplink загружен после смены роли");
         } catch (e) {
           console.error("❌ Ошибка при обновлении роли в БД:", e);
         }
