@@ -67,6 +67,7 @@ export default function UploadModal({ opened, onClose }: Props) {
   const [scale, setScale] = useState<string | null>(null); // ✅ Нет дефолтного значения
   const [bpm, setBpm] = useState<number | "">("");
   const [prices, setPrices] = useState<Record<string, number | "">>({});
+  const [tempFolderId] = useState(() => `_temp_${Date.now()}`); // Уникальный ID для временной папки
 
   const [files, setFiles] = useState<UploadFiles>({
     cover: null,
