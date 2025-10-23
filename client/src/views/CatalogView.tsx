@@ -1,5 +1,5 @@
-import { Group, Image, Text, ActionIcon, Tooltip } from "@mantine/core";
-import { IconPlus, IconPlayerPlay, IconPlayerPause } from "@tabler/icons-react";
+import { Group, Image, Text, ActionIcon, Tooltip, Menu } from "@mantine/core";
+import { IconPlus, IconPlayerPlay, IconPlayerPause, IconDots, IconEdit, IconTrash } from "@tabler/icons-react";
 import { GlassCard } from "../ui/Glass";
 import { useApp } from "../store";
 import type { Beat } from "../types";
@@ -63,7 +63,7 @@ export default function CatalogView() {
 }
 
 function BeatRow({ beat }: { beat: Beat }) {
-  const { togglePlay, playingBeatId, isPlaying } = useApp();
+  const { togglePlay, playingBeatId, isPlaying, deleteBeat, session, isOwnStore } = useApp();
   const [modalOpened, setModalOpened] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -169,6 +169,45 @@ function BeatRow({ beat }: { beat: Beat }) {
                 targetRef={buttonRef}
               />
             </>
+          )}
+
+          {/* Меню редактирования/удаления для своих битов */}
+          {session.role === "producer" && isOwnStore() && (
+            <Menu shadow="md" width={200}>
+              <Menu.Target>
+                <ActionIcon
+                  size="lg"
+                  variant="subtle"
+                  c="var(--text)"
+                  style={{ opacity: 0.7 }}
+                >
+                  <IconDots size={20} />
+                </ActionIcon>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconEdit size={16} />}
+                  onClick={() => {
+                    // TODO: Открыть модалку редактирования
+                    console.log("Edit beat:", beat.id);
+                  }}
+                >
+                  Редактировать
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={<IconTrash size={16} />}
+                  color="red"
+                  onClick={async () => {
+                    if (confirm(`Удалить бит "${beat.title}"?`)) {
+                      await deleteBeat(beat.id);
+                    }
+                  }}
+                >
+                  Удалить
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           )}
         </Group>
       </Group>

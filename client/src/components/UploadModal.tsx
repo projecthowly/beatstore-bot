@@ -11,6 +11,7 @@ import {
   NumberInput,
   Select,
   ThemeIcon,
+  Switch,
   rem,
 } from "@mantine/core";
 import { Dropzone, MIME_TYPES } from "@mantine/dropzone";
@@ -67,6 +68,7 @@ export default function UploadModal({ opened, onClose }: Props) {
   const [scale, setScale] = useState<string | null>(null); // ✅ Нет дефолтного значения
   const [bpm, setBpm] = useState<number | "">("");
   const [prices, setPrices] = useState<Record<string, number | "">>({});
+  const [freeDownload, setFreeDownload] = useState(false); // Toggle для бесплатного скачивания
   const [tempFolderId] = useState(() => `_temp_${Date.now()}`); // Уникальный ID для временной папки
 
   const [files, setFiles] = useState<UploadFiles>({
@@ -402,6 +404,7 @@ export default function UploadModal({ opened, onClose }: Props) {
         bpm: bpmValue,
         prices: uploadPrices,
         fileUrls, // Передаём URL вместо файлов
+        freeDownload, // Передаём настройку бесплатного скачивания
       });
 
       console.log("✅ Бит создан успешно");
@@ -864,6 +867,21 @@ export default function UploadModal({ opened, onClose }: Props) {
                     ))}
                   </Group>
                 </Stack>
+              </Box>
+            )}
+
+            {step === 2 && (
+              <Box style={sectionSurface}>
+                <Switch
+                  label="Разрешить бесплатное скачивание (MP3 с тегом)"
+                  description="Пользователи смогут бесплатно скачать MP3 с вашим тегом"
+                  checked={freeDownload}
+                  onChange={(event) => setFreeDownload(event.currentTarget.checked)}
+                  styles={{
+                    label: { color: "var(--text)", fontWeight: 500 },
+                    description: { color: "var(--muted)" },
+                  }}
+                />
               </Box>
             )}
 
