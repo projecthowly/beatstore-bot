@@ -260,7 +260,7 @@ export async function clearViewedProducer(userId: number): Promise<User> {
 /**
  * Назначить бесплатный план продюсеру
  */
-async function assignFreePlan(userId: number): Promise<void> {
+export async function assignFreePlan(userId: number): Promise<void> {
   await pool.query(
     `INSERT INTO user_plan (user_id, plan_id)
      VALUES ($1, (SELECT id FROM plans WHERE code = 'Free'))`,

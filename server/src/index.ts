@@ -188,6 +188,13 @@ app.patch("/api/users/:telegramId/role", async (req, res) => {
     );
     const updatedUser = updateResult.rows[0];
 
+    // Назначаем Free план новому продюсеру (если еще нет)
+    const existingPlan = await db.getUserPlan(user.id);
+    if (!existingPlan) {
+      await db.assignFreePlan(user.id);
+      console.log(`✅ Назначен Free план продюсеру: ${user.username}`);
+    }
+
     // Создаём дефолтные лицензии для нового продюсера
     await db.createDefaultLicenses(user.id);
 
