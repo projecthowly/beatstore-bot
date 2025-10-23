@@ -143,6 +143,59 @@ export function generateS3Key(folder: string, filename: string): string {
 }
 
 /**
+ * Генерирует S3 ключ для файла бита
+ * Структура: {username}_{telegramId}/beats/{beatTitle}/{filename}
+ */
+export function generateS3KeyForBeat(
+  username: string,
+  telegramId: number,
+  beatTitle: string,
+  filename: string
+): string {
+  const ext = path.extname(filename);
+  const basename = path.basename(filename, ext);
+
+  // Безопасное имя пользователя (только буквы, цифры, подчеркивания)
+  const safeUsername = username.replace(/[^a-z0-9_\-.]+/gi, "_");
+
+  // Если beatTitle начинается с "_temp_", используем его как есть (временная папка)
+  // Иначе делаем безопасное название бита
+  const safeBeatTitle = beatTitle.startsWith("_temp_")
+    ? beatTitle
+    : beatTitle.replace(/[^a-z0-9_\-.]+/gi, "_");
+
+  // Безопасное имя файла
+  const safeFilename = basename.replace(/[^a-z0-9_\-.]+/gi, "_");
+
+  // Папка пользователя: username_telegramId
+  const userFolder = `${safeUsername}_${telegramId}`;
+
+  // Полный путь: userFolder/beats/beatTitle/filename.ext
+  return `${userFolder}/beats/${safeBeatTitle}/${safeFilename}${ext}`;
+}
+
+/**
+ * Генерирует S3 ключ для аватара пользователя
+ * Структура: {username}_{telegramId}/avatars/avatar.jpg
+ */
+export function generateS3KeyForAvatar(
+  username: string,
+  telegramId: number,
+  filename: string
+): string {
+  const ext = path.extname(filename);
+
+  // Безопасное имя пользователя (только буквы, цифры, подчеркивания)
+  const safeUsername = username.replace(/[^a-z0-9_\-.]+/gi, "_");
+
+  // Папка пользователя: username_telegramId
+  const userFolder = `${safeUsername}_${telegramId}`;
+
+  // Полный путь: userFolder/avatars/avatar.ext
+  return `${userFolder}/avatars/avatar${ext}`;
+}
+
+/**
  * Копировать файл внутри S3 bucket
  * @param sourceKey - Исходный ключ файла
  * @param destinationKey - Целевой ключ файла
