@@ -15,7 +15,7 @@ import * as db from "./database.js";
 import { testConnection, pool } from "./db.js";
 
 // S3 Storage
-import { uploadToS3, getMimeType, generateS3Key, generateS3KeyForBeat, generateS3KeyForAvatar, deleteMultipleFromS3 } from "./s3.js";
+import { uploadToS3, getMimeType, generateS3Key, generateS3KeyForBeat, generateS3KeyForAvatar, deleteMultipleFromS3, moveFileInS3 } from "./s3.js";
 
 /* ===================== ENV ===================== */
 const PORT = Number(process.env.PORT || 8080);
@@ -1252,12 +1252,48 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
       return res.status(404).json({ ok: false, error: "user-not-found" });
     }
 
-    // Создаём бит в БД (key_sig вместо key, новые названия полей)
+    // Перемещаем файлы из _temp_ в финальную папку с названием бита
+    console.log(`📁 Moving files from _temp_ to "${title}" folder...`);
+    const bucketUrl = process.env.S3_BUCKET_URL || `https://storage.yandexcloud.net/${process.env.S3_BUCKET || "beatstore"}`;
+    const username = user.username || `user${telegramId}`;
+
+    // Функция для перемещения файла
+    const moveFile = async (url: string): Promise<string> => {
+      if (!url) return url;
+
+      // Извлекаем S3 ключ из URL
+      const s3Key = url.replace(bucketUrl + "/", "").replace(bucketUrl, "");
+
+      // Проверяем, содержит ли путь _temp_
+      if (!s3Key.includes("/_temp_")) {
+        console.log(`⏭️ File already in final location: ${s3Key}`);
+        return url;
+      }
+
+      // Создаем новый ключ с названием бита
+      const filename = s3Key.split("/").pop() || "file";
+      const newS3Key = generateS3KeyForBeat(username, telegramId, title, filename);
+
+      // Перемещаем файл
+      const newUrl = await moveFileInS3(s3Key, newS3Key);
+      return newUrl;
+    };
+
+    // Перемещаем все файлы
+    const finalCoverUrl = await moveFile(coverUrl);
+    const finalMp3Url = await moveFile(mp3Url);
+    const finalMp3UntaggedUrl = mp3UntaggedUrl ? await moveFile(mp3UntaggedUrl) : null;
+    const finalWavUrl = await moveFile(wavUrl);
+    const finalStemsUrl = stemsUrl ? await moveFile(stemsUrl) : null;
+
+    console.log(`✅ Files moved successfully`);
+
+    // Создаём бит в БД с финальными URL
     const beatResult = await pool.query(
       `INSERT INTO beats (user_id, title, bpm, key_sig, cover_url, mp3_tagged_url, mp3_untagged_url, wav_url, stems_url, free_download)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
-      [user.id, title, bpm, beatKey, coverUrl, mp3Url, mp3UntaggedUrl || null, wavUrl, stemsUrl || null, freeDownload]
+      [user.id, title, bpm, beatKey, finalCoverUrl, finalMp3Url, finalMp3UntaggedUrl, finalWavUrl, finalStemsUrl, freeDownload]
     );
 
     const beatId = beatResult.rows[0].id;

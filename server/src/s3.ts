@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import fs from "fs";
 import path from "path";
 
@@ -140,6 +140,114 @@ export function generateS3Key(folder: string, filename: string): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).slice(2, 8);
   return `${folder}/${timestamp}_${random}_${safeName}${ext}`;
+}
+
+/**
+ * Копировать файл внутри S3 bucket
+ * @param sourceKey - Исходный ключ файла
+ * @param destinationKey - Целевой ключ файла
+ * @returns URL нового файла
+ */
+export async function copyFileInS3(
+  sourceKey: string,
+  destinationKey: string
+): Promise<string> {
+  const bucketName = process.env.S3_BUCKET || "beatstore";
+  const bucketUrl = process.env.S3_BUCKET_URL || `https://storage.yandexcloud.net/${bucketName}`;
+
+  try {
+    console.log(`📋 Copying ${sourceKey} → ${destinationKey}...`);
+
+    const copyCommand = new CopyObjectCommand({
+      Bucket: bucketName,
+      CopySource: `${bucketName}/${sourceKey}`,
+      Key: destinationKey,
+      ACL: "public-read",
+    });
+
+    await s3Client.send(copyCommand);
+
+    const newUrl = `${bucketUrl}/${destinationKey}`;
+    console.log(`✅ File copied: ${newUrl}`);
+    return newUrl;
+  } catch (error) {
+    console.error(`❌ Failed to copy ${sourceKey} to ${destinationKey}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Удалить файл из S3
+ * @param s3Key - Ключ файла для удаления
+ */
+export async function deleteFileFromS3(s3Key: string): Promise<void> {
+  const bucketName = process.env.S3_BUCKET || "beatstore";
+
+  try {
+    console.log(`🗑️ Deleting ${s3Key}...`);
+
+    const deleteCommand = new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: s3Key,
+    });
+
+    await s3Client.send(deleteCommand);
+    console.log(`✅ File deleted: ${s3Key}`);
+  } catch (error) {
+    console.error(`❌ Failed to delete ${s3Key}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Удалить несколько файлов из S3 по URL
+ * @param urls - Массив публичных URL файлов
+ * @returns Количество удаленных файлов
+ */
+export async function deleteMultipleFromS3(urls: string[]): Promise<number> {
+  const bucketName = process.env.S3_BUCKET || "beatstore";
+  const bucketUrl = process.env.S3_BUCKET_URL || `https://storage.yandexcloud.net/${bucketName}`;
+
+  let deletedCount = 0;
+
+  for (const url of urls) {
+    try {
+      // Извлекаем ключ из URL
+      const s3Key = url.replace(bucketUrl + "/", "").replace(bucketUrl, "");
+
+      if (!s3Key || s3Key === url) {
+        console.warn(`⚠️ Не удалось извлечь S3 ключ из URL: ${url}`);
+        continue;
+      }
+
+      await deleteFileFromS3(s3Key);
+      deletedCount++;
+    } catch (error) {
+      console.error(`❌ Failed to delete file ${url}:`, error);
+    }
+  }
+
+  return deletedCount;
+}
+
+/**
+ * Переместить файл в S3 (копировать и удалить оригинал)
+ * @param sourceKey - Исходный ключ файла
+ * @param destinationKey - Целевой ключ файла
+ * @returns URL нового файла
+ */
+export async function moveFileInS3(
+  sourceKey: string,
+  destinationKey: string
+): Promise<string> {
+  // Копируем файл
+  const newUrl = await copyFileInS3(sourceKey, destinationKey);
+
+  // Удаляем исходный файл
+  await deleteFileFromS3(sourceKey);
+
+  console.log(`✅ File moved: ${sourceKey} → ${destinationKey}`);
+  return newUrl;
 }
 
 // Экспортируем клиент для прямого использования (если нужно)
