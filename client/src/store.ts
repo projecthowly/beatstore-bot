@@ -11,6 +11,7 @@ const API_BASE =
 function getTelegramDataFromUrl(): {
   telegramId: number | null;
   username: string | null;
+  displayName: string | null;
   role: "producer" | "artist" | null;
   isNewUser: boolean;
   viewProducerId: number | null;
@@ -27,6 +28,7 @@ function getTelegramDataFromUrl(): {
     // Приоритет Telegram WebApp SDK (для direct links)
     let telegramId: number | null = null;
     let usernameResult: string | null = null;
+    let displayNameResult: string | null = null;
     let viewProducerId: number | null = null; // ВСЕГДА null - используем ТОЛЬКО startParam для deeplink!
     let startParam: string | null = null;
 
@@ -35,7 +37,9 @@ function getTelegramDataFromUrl(): {
     if (tgWebApp?.initDataUnsafe?.user) {
       const tgUser = tgWebApp.initDataUnsafe.user;
       telegramId = tgUser.id || null;
-      usernameResult = tgUser.username || tgUser.first_name || null;
+      usernameResult = tgUser.username || null;
+      // Display name = first_name + last_name (если есть)
+      displayNameResult = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || null;
       console.log("📱 Данные получены из Telegram Web App SDK:", tgUser);
 
       // Проверяем start_param для диплинка (Web App direct link format)
@@ -49,6 +53,7 @@ function getTelegramDataFromUrl(): {
     if (!telegramId && tgId) {
       telegramId = parseInt(tgId, 10);
       usernameResult = username || null;
+      displayNameResult = username || null; // fallback
     }
 
     console.log("🔍 getTelegramDataFromUrl:", {
@@ -56,13 +61,14 @@ function getTelegramDataFromUrl(): {
       urlParams: { tgId, username, role, isNew },
       fromSDK: !!tgWebApp?.initDataUnsafe?.user,
       sdkInitData: tgWebApp?.initDataUnsafe,
-      finalData: { telegramId, username: usernameResult, role, isNew, startParam },
+      finalData: { telegramId, username: usernameResult, displayName: displayNameResult, role, isNew, startParam },
       parsedIsNew: isNew === "1",
     });
 
     return {
       telegramId,
       username: usernameResult,
+      displayName: displayNameResult,
       role: role === "producer" || role === "artist" ? role : null,
       isNewUser: isNew === "1",
       viewProducerId,
@@ -70,7 +76,7 @@ function getTelegramDataFromUrl(): {
     };
   } catch (e) {
     console.error("❌ Ошибка при получении Telegram данных:", e);
-    return { telegramId: null, username: null, role: null, isNewUser: true, viewProducerId: null, startParam: null };
+    return { telegramId: null, username: null, displayName: null, role: null, isNewUser: true, viewProducerId: null, startParam: null };
   }
 }
 
@@ -1114,6 +1120,7 @@ export const useApp = create<AppState>((set, get) => {
             body: JSON.stringify({
               telegram_id: telegramId,
               username: telegramData.username,
+              display_name: telegramData.displayName,
               role, // выбранная роль
             }),
           });
@@ -1187,6 +1194,7 @@ export const useApp = create<AppState>((set, get) => {
             body: JSON.stringify({
               telegram_id: telegramData.telegramId,
               username: telegramData.username,
+              display_name: telegramData.displayName,
               role: "artist", // ✅ Автоматически создаём как артиста
             }),
           });
