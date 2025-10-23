@@ -155,6 +155,8 @@ export default function UploadModal({ opened, onClose }: Props) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("type", key);
+      formData.append("telegramId", String(telegramId || ""));
+      formData.append("beatTitle", tempFolderId || "_temp_fallback");
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE || "https://beatry.store"}/api/upload-file`, {
         method: "POST",
