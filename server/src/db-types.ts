@@ -53,7 +53,7 @@ export interface CreateUserInput {
 export interface UpdateUserInput {
   username?: string;
   display_name?: string;
-  avatar_url?: string;
+  avatar_url?: string | null;
   bio?: string;
   contact_username?: string;
   instagram_url?: string;
