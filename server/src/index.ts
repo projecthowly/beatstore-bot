@@ -1025,6 +1025,83 @@ app.patch("/api/beats/:beatId", async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/beats/:beatId
+ * Полное обновление бита (метаданные, цены, файлы)
+ */
+app.put("/api/beats/:beatId", async (req, res) => {
+  try {
+    const beatIdParam = req.params.beatId;
+    const beatId = beatIdParam.startsWith("beat_")
+      ? parseInt(beatIdParam.replace("beat_", ""), 10)
+      : parseInt(beatIdParam, 10);
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    const { title, bpm, key, freeDownload, prices, fileUrls } = req.body;
+
+    console.log(`📝 Полное обновление бита ${beatId}:`, { title, bpm, key, freeDownload, prices, fileUrls });
+
+    // Проверяем существование бита
+    const beat = await db.getBeatById(beatId);
+    if (!beat) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    // Обновляем метаданные бита
+    await db.updateBeat(beatId, {
+      title: title?.trim(),
+      bpm,
+      key_sig: key,
+      free_download: freeDownload !== undefined ? freeDownload : undefined,
+      cover_url: fileUrls?.cover,
+      mp3_tagged_url: fileUrls?.mp3,
+      mp3_untagged_url: fileUrls?.mp3Untagged,
+      wav_url: fileUrls?.wav,
+      stems_url: fileUrls?.stems,
+    });
+
+    // Обновляем цены для каждой лицензии
+    if (prices) {
+      for (const [licenseKey, price] of Object.entries(prices)) {
+        if (typeof price === "number" && price > 0) {
+          // Получаем license_id по ключу (basic, premium и т.д.)
+          const licenseResult = await pool.query(
+            `SELECT id FROM licenses WHERE user_id = $1 AND lic_key = $2`,
+            [beat.user_id, licenseKey]
+          );
+
+          if (licenseResult.rows.length === 0) {
+            console.warn(`⚠️ Лицензия с ключом ${licenseKey} не найдена для пользователя ${beat.user_id}`);
+            continue;
+          }
+
+          const licenseId = licenseResult.rows[0].id;
+
+          // Обновляем или создаём цену для этого бита и лицензии в bl_prices
+          await pool.query(
+            `INSERT INTO bl_prices (beat_id, license_id, price)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (beat_id, license_id)
+             DO UPDATE SET price = EXCLUDED.price`,
+            [beatId, licenseId, price]
+          );
+
+          console.log(`✅ Обновлена цена для бита ${beatId}, лицензия ${licenseKey}: ${price}`);
+        }
+      }
+    }
+
+    console.log(`✅ Бит ${beatId} успешно обновлен (полное обновление)`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /api/beats/:beatId error:", e);
+    res.status(500).json({ ok: false, error: "update-failed" });
+  }
+});
+
 /* ---------- POST /api/upload-file ---------- */
 // Немедленная загрузка отдельного файла на S3
 app.post(
@@ -1205,6 +1282,42 @@ app.post(
   }
 );
 
+/* ---------- DELETE /api/users/:telegramId/avatar ---------- */
+// Удаление аватара пользователя
+app.delete("/api/users/:telegramId/avatar", async (req, res) => {
+  try {
+    const telegramId = parseInt(req.params.telegramId, 10);
+    if (isNaN(telegramId)) {
+      return res.status(400).json({ ok: false, error: "invalid-telegram-id" });
+    }
+
+    console.log(`🗑️ Deleting avatar for user ${telegramId}`);
+
+    // Получаем данные пользователя
+    const user = await db.findUserByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "user-not-found" });
+    }
+
+    // Удаляем аватар из S3, если он есть
+    if (user.avatar_url) {
+      console.log(`🗑️ Удаляем аватар из S3: ${user.avatar_url}`);
+      await deleteMultipleFromS3([user.avatar_url]).catch((e) => {
+        console.warn("⚠️ Не удалось удалить аватар из S3:", e);
+      });
+    }
+
+    // Обновляем avatar_url в БД (устанавливаем null)
+    await db.updateUser(user.id, { avatar_url: null });
+
+    console.log(`✅ Аватар удалён для пользователя ${telegramId}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /api/users/:telegramId/avatar error:", e);
+    res.status(500).json({ ok: false, error: "delete-failed" });
+  }
+});
+
 /* ---------- POST /api/beats/upload ---------- */
 app.post("/api/beats/upload", express.json(), async (req, res) => {
   try {
@@ -1374,6 +1487,110 @@ app.post("/api/beats/upload", express.json(), async (req, res) => {
 
 /* ---------- GET /api/beats/:beatId/free-download ---------- */
 // Бесплатное скачивание MP3 с тегом
+// POST для записи в БД, GET для совместимости
+app.post("/api/beats/:beatId/free-download", async (req, res) => {
+  try {
+    const beatId = parseInt(req.params.beatId, 10);
+    const { userId } = req.body;
+
+    if (isNaN(beatId)) {
+      return res.status(400).json({ ok: false, error: "invalid-beat-id" });
+    }
+
+    // Получаем данные бита
+    const beatResult = await pool.query(
+      `SELECT b.*, u.username, u.id as user_id
+       FROM beats b
+       JOIN users u ON b.user_id = u.id
+       WHERE b.id = $1`,
+      [beatId]
+    );
+
+    if (beatResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "beat-not-found" });
+    }
+
+    const beat = beatResult.rows[0];
+
+    // Проверяем что бесплатное скачивание разрешено
+    if (!beat.free_download) {
+      return res.status(403).json({ ok: false, error: "free-download-not-allowed" });
+    }
+
+    // Проверяем что файл существует
+    if (!beat.mp3_tagged_url) {
+      return res.status(404).json({ ok: false, error: "file-not-found" });
+    }
+
+    // Увеличиваем счетчик бесплатных скачиваний
+    await pool.query(
+      `UPDATE beats SET free_dl_count = free_dl_count + 1 WHERE id = $1`,
+      [beatId]
+    );
+
+    // Записываем в таблицу downloads для аналитики
+    if (userId) {
+      // Находим пользователя по telegram_id
+      const userResult = await pool.query(
+        `SELECT id FROM users WHERE telegram_id = $1`,
+        [userId]
+      );
+
+      if (userResult.rows.length > 0) {
+        const dbUserId = userResult.rows[0].id;
+
+        await pool.query(
+          `INSERT INTO downloads (user_id, beat_id, file_type, is_free, downloaded_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
+          [dbUserId, beatId, 'mp3', true]
+        );
+
+        console.log(`📊 Записано скачивание в downloads: user_id=${dbUserId}, beat_id=${beatId}`);
+      }
+    }
+
+    console.log(`📥 Бесплатное скачивание: beat_id=${beatId}, user=${userId}`);
+
+    // Отправляем файл пользователю через Telegram Bot
+    if (userId && bot) {
+      try {
+        await bot.telegram.sendAudio(userId, beat.mp3_tagged_url, {
+          title: beat.title,
+          performer: beat.username || "Producer",
+          caption: `🎵 ${beat.title}\n📥 Бесплатное скачивание MP3`,
+        });
+
+        console.log(`✅ Файл отправлен пользователю ${userId} через Telegram`);
+
+        res.json({
+          ok: true,
+          sentViaBot: true,
+          message: "Файл отправлен в Telegram"
+        });
+      } catch (sendError) {
+        console.error("❌ Ошибка при отправке файла через Telegram:", sendError);
+
+        // Если не удалось отправить через бота, возвращаем URL для скачивания в браузере
+        res.json({
+          ok: true,
+          fileUrl: beat.mp3_tagged_url,
+          fallback: true
+        });
+      }
+    } else {
+      // Если нет userId или бота, возвращаем URL для скачивания
+      res.json({
+        ok: true,
+        fileUrl: beat.mp3_tagged_url
+      });
+    }
+  } catch (e) {
+    console.error("POST /api/beats/:beatId/free-download error:", e);
+    res.status(500).json({ ok: false, error: "download-failed" });
+  }
+});
+
+// GET endpoint для обратной совместимости
 app.get("/api/beats/:beatId/free-download", async (req, res) => {
   try {
     const beatId = parseInt(req.params.beatId, 10);
@@ -1407,12 +1624,6 @@ app.get("/api/beats/:beatId/free-download", async (req, res) => {
       return res.status(404).json({ ok: false, error: "file-not-found" });
     }
 
-    // Увеличиваем счетчик бесплатных скачиваний
-    await pool.query(
-      `UPDATE beats SET free_dl_count = free_dl_count + 1 WHERE id = $1`,
-      [beatId]
-    );
-
     // Генерируем имя файла: @username BPM KEY - title.mp3
     const { generateFreeDownloadFilename } = await import("./audio-converter.js");
     const filename = generateFreeDownloadFilename(
@@ -1422,7 +1633,7 @@ app.get("/api/beats/:beatId/free-download", async (req, res) => {
       beat.key_sig
     );
 
-    console.log(`📥 Бесплатное скачивание: ${filename}.mp3 (beat_id: ${beatId})`);
+    console.log(`📥 Бесплатное скачивание (GET): ${filename}.mp3 (beat_id: ${beatId})`);
 
     // Возвращаем URL файла с правильным именем для скачивания
     res.json({

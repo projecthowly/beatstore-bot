@@ -215,6 +215,11 @@ type AppState = {
   uploadBeat: (payload: UploadPayload) => Promise<void>;
   deleteBeat: (beatId: string) => Promise<void>;
 
+  /** редактирование бита */
+  editingBeat: Beat | null;
+  setEditingBeat: (beat: Beat | null) => void;
+  updateBeat: (beatId: string, payload: UploadPayload) => Promise<void>;
+
   /** обновление ника (сохраняет в БД) */
   updateNickname: (next: string) => Promise<void>;
 
@@ -227,6 +232,12 @@ type AppState = {
     spotifyUrl?: string;
     contactUsername?: string;
   }) => Promise<void>;
+
+  /** загрузка аватара */
+  uploadAvatar: (file: File) => Promise<string>;
+
+  /** удаление аватара */
+  deleteAvatar: () => Promise<void>;
 
   /** deeplink пользователя */
   deeplink: string | null;
@@ -315,6 +326,8 @@ export const useApp = create<AppState>((set, get) => {
     ],
 
     deeplink: null,
+
+    editingBeat: null,
 
     playerCollapsed: false,
     viewingGlobalStore: false, // по умолчанию личный битстор
@@ -851,6 +864,48 @@ export const useApp = create<AppState>((set, get) => {
       }
     },
 
+    setEditingBeat(beat: Beat | null) {
+      set({ editingBeat: beat });
+    },
+
+    async updateBeat(beatId: string, payload: UploadPayload) {
+      const telegramId = get().telegramId;
+      if (!telegramId) {
+        console.error("❌ Нет telegramId для обновления бита");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/beats/${beatId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: payload.title,
+            key: payload.key,
+            bpm: payload.bpm,
+            prices: payload.prices,
+            fileUrls: payload.fileUrls,
+            freeDownload: payload.freeDownload,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to update beat");
+        }
+
+        console.log("✅ Бит обновлен в БД:", beatId);
+
+        // Обновляем список битов после редактирования
+        await get().loadBeats(telegramId);
+
+        // Очищаем editingBeat
+        set({ editingBeat: null });
+      } catch (e) {
+        console.error("❌ Ошибка при обновлении бита:", e);
+        throw e;
+      }
+    },
+
     /* === ПРОФИЛЬ: смена ника (сохраняет в БД) === */
     async updateNickname(nextName: string) {
       const name = nextName.trim().slice(0, 15); // ✅ Ограничение 15 символов
@@ -917,8 +972,88 @@ export const useApp = create<AppState>((set, get) => {
           }),
         });
         console.log("✅ Профиль обновлен в БД");
+
+        // Обновляем локальное состояние
+        set((state) => ({
+          me: {
+            ...state.me,
+            bio: data.bio || state.me.bio,
+            contactUsername: data.contactUsername || state.me.contactUsername,
+            instagramUrl: data.instagramUrl || state.me.instagramUrl,
+            youtubeUrl: data.youtubeUrl || state.me.youtubeUrl,
+            soundcloudUrl: data.soundcloudUrl || state.me.soundcloudUrl,
+            spotifyUrl: data.spotifyUrl || state.me.spotifyUrl,
+          },
+        }));
       } catch (e) {
         console.error("❌ Ошибка при обновлении профиля в БД:", e);
+        throw e;
+      }
+    },
+
+    /* === ПРОФИЛЬ: загрузка аватара === */
+    async uploadAvatar(file: File): Promise<string> {
+      const telegramId = get().telegramId;
+      if (!telegramId) throw new Error("No telegram ID");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("telegramId", telegramId.toString());
+
+      try {
+        const response = await fetch(`${API_BASE}/api/upload-avatar`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
+
+        console.log("✅ Аватар загружен:", data.url);
+
+        // Обновляем локальное состояние
+        set((state) => ({
+          me: {
+            ...state.me,
+            avatarUrl: data.url,
+          },
+        }));
+
+        return data.url;
+      } catch (e) {
+        console.error("❌ Ошибка при загрузке аватара:", e);
+        throw e;
+      }
+    },
+
+    /* === ПРОФИЛЬ: удаление аватара === */
+    async deleteAvatar(): Promise<void> {
+      const telegramId = get().telegramId;
+      if (!telegramId) throw new Error("No telegram ID");
+
+      try {
+        const response = await fetch(`${API_BASE}/api/users/${telegramId}/avatar`, {
+          method: "DELETE",
+        });
+
+        const data = await response.json();
+        if (!data.ok) {
+          throw new Error(data.error || "Delete failed");
+        }
+
+        console.log("✅ Аватар удалён");
+
+        // Обновляем локальное состояние
+        set((state) => ({
+          me: {
+            ...state.me,
+            avatarUrl: undefined,
+          },
+        }));
+      } catch (e) {
+        console.error("❌ Ошибка при удалении аватара:", e);
         throw e;
       }
     },
