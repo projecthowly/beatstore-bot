@@ -8,21 +8,17 @@ RUN apk add --no-cache ffmpeg
 # Копируем package files серверной части
 COPY server/package*.json ./
 
-# Устанавливаем зависимости (включая devDependencies для компиляции)
-RUN npm install
+# Устанавливаем только production зависимости
+RUN npm install --only=production
 
-# Копируем серверные исходники
-COPY server/src ./src
-COPY server/tsconfig.json ./tsconfig.json
-
-# Создаем директорию для загрузок
-RUN mkdir -p uploads
-
-# Компилируем TypeScript
-RUN npm run build
+# Копируем уже скомпилированный серверный код
+COPY server/dist ./dist
 
 # Копируем собранные клиентские файлы
 COPY client/dist /client/dist
+
+# Создаем директорию для загрузок
+RUN mkdir -p uploads
 
 # Порт для приложения
 EXPOSE 8080
