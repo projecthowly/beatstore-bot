@@ -23,20 +23,19 @@ services:
       - beatstore-network
 
   app:
-    image: node:18-alpine
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
     container_name: beatstore-app
     restart: always
-    working_dir: /app
     volumes:
-      - ./server:/app/server
-      - ./client/dist:/app/client/dist
+      - ./server/dist:/app/dist:ro
     ports:
       - "8080:8080"
     environment:
       - NODE_ENV=production
     env_file:
       - ./server/.env
-    command: sh -c "cd server && npm ci --only=production && node dist/index.js"
     depends_on:
       postgres:
         condition: service_healthy

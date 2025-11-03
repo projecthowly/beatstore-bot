@@ -5,27 +5,26 @@ WORKDIR /app
 # Устанавливаем FFmpeg для конвертации аудио
 RUN apk add --no-cache ffmpeg
 
-# Копируем package files
-COPY package*.json ./
+# Копируем package files серверной части
+COPY server/package*.json ./
 
 # Устанавливаем зависимости
 RUN npm install
 
-# Копируем остальные файлы
-COPY . .
+# Копируем серверные файлы
+COPY server/ .
 
 # Создаем директорию для загрузок
 RUN mkdir -p uploads
 
-# Создаем директорию для клиентских файлов (будет монтироваться volume)
-RUN mkdir -p /client/dist
-
 # Компилируем TypeScript
 RUN npm run build
+
+# Копируем собранные клиентские файлы
+COPY client/dist /client/dist
 
 # Порт для приложения
 EXPOSE 8080
 
 # Запуск скомпилированного приложения
-# Создаём /client/dist перед запуском на случай если volume ещё не примонтирован
-CMD ["/bin/sh", "-c", "mkdir -p /client/dist && npm start"]
+CMD ["npm", "start"]
