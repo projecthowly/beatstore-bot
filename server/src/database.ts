@@ -83,17 +83,24 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 }
 
 /**
+ * Добавить Unlimited лицензию при апгрейде на платный план
+ */
+export async function addUnlimitedLicense(userId: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO licenses (user_id, lic_key, name, incl_mp3, incl_wav, incl_stems, default_price, min_price)
+     VALUES ($1, 'unlimited', 'Unlimited License', true, true, true, NULL, NULL)
+     ON CONFLICT (user_id, lic_key) DO NOTHING`,
+    [userId]
+  );
+  console.log(`✅ Unlimited License добавлена для пользователя ${userId}`);
+}
+
+/**
  * Создать дефолтные лицензии для нового продюсера
- * Free план: 2 лицензии (Basic, Premium)
- * Basic/Pro план: 3 лицензии (Basic, Premium, Unlimited)
+ * Всегда создаем 2 лицензии: Basic и Premium
  */
 export async function createDefaultLicenses(userId: number): Promise<void> {
-  // Получаем план пользователя
-  const userPlan = await getUserPlan(userId);
-  const planCode = userPlan?.plan?.code || "Free";
-
-  // Определяем, сколько лицензий создавать
-  const licensesToCreate = planCode === "Free" ? 2 : 3;
+  const licensesToCreate = 2; // Всегда 2 лицензии по умолчанию
 
   const defaultLicenses = [
     {
@@ -145,7 +152,7 @@ export async function createDefaultLicenses(userId: number): Promise<void> {
     );
   }
 
-  console.log(`✅ Создано ${licensesToCreate} дефолтных лицензий для пользователя ${userId} (план: ${planCode})`);
+  console.log(`✅ Создано ${licensesToCreate} дефолтных лицензий для пользователя ${userId}`);
 }
 
 /**
@@ -199,6 +206,16 @@ export async function updateUser(
     fields.push(`other_links = $${paramIndex++}`);
     values.push(JSON.stringify(input.other_links));
   }
+  if (input.wallet_address !== undefined) {
+    console.log(`💳 Adding wallet_address to update: ${input.wallet_address}`);
+    fields.push(`wallet_address = $${paramIndex++}`);
+    values.push(input.wallet_address);
+  }
+  if (input.wallet_connected_at !== undefined) {
+    console.log(`🕒 Adding wallet_connected_at to update: ${input.wallet_connected_at}`);
+    fields.push(`wallet_connected_at = $${paramIndex++}`);
+    values.push(input.wallet_connected_at);
+  }
   if (input.viewed_producer_id !== undefined) {
     fields.push(`viewed_producer_id = $${paramIndex++}`);
     values.push(input.viewed_producer_id);
@@ -209,6 +226,7 @@ export async function updateUser(
   }
 
   if (fields.length === 0) {
+    console.log("⚠️ No fields to update");
     const current = await pool.query<User>("SELECT * FROM users WHERE id = $1", [userId]);
     return current.rows[0];
   }
@@ -216,10 +234,13 @@ export async function updateUser(
   fields.push(`updated_at = NOW()`);
   values.push(userId);
 
-  const result = await pool.query<User>(
-    `UPDATE users SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
-    values
-  );
+  const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`;
+  console.log("📝 SQL Query:", sql);
+  console.log("📦 Values:", values);
+
+  const result = await pool.query<User>(sql, values);
+
+  console.log("✅ SQL executed, rows affected:", result.rowCount);
 
   return result.rows[0];
 }
@@ -358,11 +379,11 @@ export async function createBeat(input: CreateBeatInput): Promise<Beat> {
 }
 
 /**
- * Получить все биты продюсера
+ * Получить все биты продюсера (исключая удаленные)
  */
 export async function getProducerBeats(userId: number): Promise<Beat[]> {
   const result = await pool.query<Beat>(
-    "SELECT * FROM beats WHERE user_id = $1 ORDER BY created_at DESC",
+    "SELECT * FROM beats WHERE user_id = $1 AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY created_at DESC",
     [userId]
   );
   return result.rows;
@@ -457,11 +478,11 @@ export async function deleteBeat(beatId: number): Promise<void> {
 }
 
 /**
- * Получить все биты (для глобального битстора)
+ * Получить все биты (для глобального битстора, исключая удаленные)
  */
 export async function getAllBeats(limit = 50, offset = 0): Promise<Beat[]> {
   const result = await pool.query<Beat>(
-    "SELECT * FROM beats ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+    "SELECT * FROM beats WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY created_at DESC LIMIT $1 OFFSET $2",
     [limit, offset]
   );
   return result.rows;
