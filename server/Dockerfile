@@ -8,11 +8,12 @@ RUN apk add --no-cache ffmpeg
 # Копируем package files серверной части
 COPY server/package*.json ./
 
-# Устанавливаем зависимости
+# Устанавливаем зависимости (включая devDependencies для компиляции)
 RUN npm install
 
-# Копируем серверные файлы
-COPY server/ .
+# Копируем серверные исходники
+COPY server/src ./src
+COPY server/tsconfig.json ./tsconfig.json
 
 # Создаем директорию для загрузок
 RUN mkdir -p uploads
