@@ -28,4 +28,4 @@ EXPOSE 8080
 
 # Запуск скомпилированного приложения
 # Создаём /client/dist перед запуском на случай если volume ещё не примонтирован
-CMD sh -c "mkdir -p /client/dist && npm start"
+CMD ["/bin/sh", "-c", "mkdir -p /client/dist && npm start"]
